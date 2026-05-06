@@ -1,193 +1,358 @@
 ﻿# Telemedicine Rural App
 
-Production-style telemedicine web app built with Express, Prisma, PostgreSQL, Socket.IO, a React SPA frontend, and Azure Blob Storage.
+Production-style telemedicine platform built with Express, Prisma, PostgreSQL, Socket.IO, and a React SPA.
 
-## Overview
+This repository contains:
+- Role-based telemedicine workflows for patients, doctors, help workers, and admins
+- Real-time consultation support (video/audio/text signaling and chat)
+- Prescription, pharmacy, lab, reminders, and document workflows
+- AI-assisted draft tooling with review-required policy
+- Azure-ready deployment flow and Capacitor mobile wrapper scaffolding
 
-This app supports patient, doctor, help_worker, and admin roles with appointment booking, doctor slot management, consultation context, prescriptions, document uploads, QR-based patient sharing, and role-based authorization.
+## 1. Product Scope
 
-It now also includes no-show follow-up drafting, refill reminder scheduling, doctor offline reason messaging, weekly doctor feedback digest metrics, admin impact outcome KPIs, first-time patient/helper onboarding aids, printable patient health card output, and booking rebook shortcuts.
+The system is designed for mixed-connectivity and rural-first usage patterns:
+- Patient booking and consultation lifecycle
+- Doctor slot and analytics management
+- Delegated care support through explicit consent
+- Document and prescription handoff via secure access controls
+- Operations visibility with impact and readiness metrics
 
-## Tech Stack
+## 2. Technology Stack
 
-1. Backend: Node.js, Express (CommonJS)
-2. Database: PostgreSQL with Prisma ORM
-3. Frontend: React SPA (Vite build served by Express)
-4. Realtime: Socket.IO signaling for consultation flow
-5. Storage: Azure Blob Storage (Azure-only upload mode supported)
-6. Security: Helmet CSP, cookie auth (JWT), rate limiting
-7. Styling: custom CSS system (frontend source styles)
-8. Testing: Jest + Supertest
+- Backend: Node.js, Express (CommonJS)
+- Database: PostgreSQL via Prisma ORM
+- Frontend: React + React Router + Vite
+- Realtime: Socket.IO
+- Storage: Azure Blob Storage (with configurable local fallback)
+- Auth: Cookie-based JWT session
+- Security: Helmet, rate limiting, role authorization
+- Testing: Jest + Supertest
 
-## Core Features
+## 3. Repository Layout
 
-1. Auth and roles: patient, doctor, help_worker, admin
-2. Doctor discovery with filtering and booking flow
-3. Calendar-like slot selection and appointment booking
-4. Appointment lifecycle: booked, completed, cancelled, no_show
-5. Video/audio/text consultation flow with realtime signaling
-6. Prescription creation and PDF export
-7. Patient + family-member context separation
-8. Medical document uploads and downloads with access checks
-9. Azure-only uploads with local-to-Azure migration script
-10. Multi-language translation selector
-11. Ollama-powered AI Copilot workspace with safety-first draft tools
-12. In-call chat translation support
-13. Medical store workflows with pharmacy order lifecycle tracking
-14. Lab test catalog + order pipeline with report linking
-15. In-app PDF preview for prescriptions and uploaded reports (no forced download)
-16. Doctor Patient Access Console: view full patient details by patient ID or share token
-17. Patient-side profile sharing via time-bound QR token links
-18. AI Consultation Summary for Referral draft generation (doctor/admin, review-required)
-19. Doctor/admin no-show action with async follow-up draft support
-20. Refill reminder scheduling using prescription follow-up window and handoff guidance
-21. Doctor offline status reason and weekly feedback digest in analytics
-22. Admin impact outcomes carding (no-show recovery, refill alerts, review coverage, active helper links)
-23. First-time patient tour and helper onboarding checklist persistence
-24. Appointment prep checklist in T-30 window and one-tap rebook deep links
-25. Printable patient health card view for shareable care context
-26. Prescription PDF handoff QR embedding
-27. Capacitor scaffold support for Android/iOS wrapper workflows
+```text
+.
+|- app.js
+|- apps/
+|  |- backend/
+|  |  |- controllers/
+|  |  |- middleware/
+|  |  |- models/
+|  |  |- routes/
+|  |  |- server/
+|  |  |- services/
+|  |- frontend/
+|     |- src/
+|- docs/
+|- prisma/
+|- scripts/
+|- tests/
+|- azure-deploy.md
+|- design.md
+|- docs/PRD.md
+|- docs/production-readiness.md
+|- docs/CAPACITOR.md
+```
 
-## Quick Start
+## 4. Prerequisites
 
-### Option A: One-command startup (Windows)
+- Node.js 20+
+- PostgreSQL 14+
+- npm 10+
+- Optional: Docker (for local postgres container)
 
-Run:
+## 5. Quick Start
 
-`run-app.bat`
+### 5.1 One-command startup (Windows)
 
-### Option B: Manual startup
+```bat
+run-app.bat
+```
 
-1. Copy env file: `copy .env.example .env`
-2. Start database (if using Docker): `docker compose up -d`
-3. Install dependencies: `npm install`
-4. Run migrations: `npm run db:migrate`
-5. Seed sample data: `npm run db:seed`
-6. Start app: `npm run dev`
+### 5.2 Manual startup
 
-## Seeded Accounts
+```bash
+copy .env.example .env
+docker compose up -d
+npm install
+npm run db:migrate
+npm run db:seed
+npm run dev
+```
 
-1. Patient: `patient1@example.com` / `Password123!`
-2. Doctor: `doctor1@example.com` / `Password123!`
-3. Admin: `admin@example.com` / `Password123!`
+App URLs:
+- API + SPA server: http://localhost:3000
+- Frontend-only dev server (optional): http://localhost:5173 via `npm run frontend:dev`
 
-## Environment Variables
+## 6. Environment Variables
 
-Defined in `.env.example`:
+Reference file: `.env.example`
 
-1. `PORT`
-2. `NODE_ENV`
-3. `APP_BASE_URL`
-4. `JWT_SECRET`
-5. `JWT_EXPIRES_IN`
-6. `DATABASE_URL`
-7. `AZURE_STORAGE_CONNECTION_STRING`
-8. `AZURE_STORAGE_CONTAINER`
-9. `AZURE_STORAGE_PUBLIC_BASE_URL`
-10. `AZURE_UPLOADS_MODE`
-11. `ADMIN_INVITE_CODE`
-12. `OLLAMA_BASE_URL`
-13. `OLLAMA_MODEL`
-14. `OLLAMA_TIMEOUT_MS`
+### 6.1 Required in all environments
 
-## NPM Scripts
+- `PORT`
+- `NODE_ENV`
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `JWT_EXPIRES_IN`
 
-1. `npm run dev`: start with nodemon
-2. `npm start`: production start (runs prestart tasks in production: Prisma generate, migrate deploy, frontend build if missing)
-3. `npm run start:azure`: run `startup.sh` explicitly (Linux App Service startup script)
-4. `npm run frontend:dev`: run Vite dev server
-5. `npm run frontend:build`: build SPA bundle
-6. `npm run prisma:generate`: generate Prisma client
-7. `npm run db:migrate`: run Prisma migrate dev
-8. `npm run db:deploy`: run Prisma migrate deploy
-9. `npm run db:seed`: execute seed script
-10. `npm test`: run tests
-11. `npm run ci`: lint + test + Prisma generate + frontend build
-12. `npm run mobile:build`: build frontend web assets for mobile wrapper sync
-13. `npm run mobile:sync`: build and sync Capacitor web assets
-14. `npm run mobile:add:android`: add Android platform
-15. `npm run mobile:add:ios`: add iOS platform
-16. `npm run mobile:open:android`: open Android Studio project
+### 6.2 Network and CORS
 
-## High-level Architecture
+- `APP_BASE_URL` (comma-separated allowed web origins)
+- `ALLOW_NO_ORIGIN_SOCKET` (default `false`)
 
-1. `app.js`: minimal entrypoint wrapper for app/server composition
-2. `apps/backend/server/create-app.js`: middleware stack, API mount, SPA/static serving
-3. `apps/backend/server/create-server.js`: HTTP + Socket.IO server creation
-4. `apps/backend/routes/*`: route definitions by domain
-5. `apps/backend/controllers/*`: request handlers and business flow orchestration
-6. `apps/backend/models/db.js`: Prisma client instance
-7. `apps/backend/models/schemas/*`: Zod validation schemas
-8. `apps/backend/services/*`: realtime, storage, presence, structured logger
-9. `apps/backend/middleware/*`: auth, API mode, request context, error handling
-10. `apps/frontend/*`: React + Vite SPA source
+### 6.3 Storage
 
-## Main Route Groups
+- `AZURE_STORAGE_CONNECTION_STRING`
+- `AZURE_STORAGE_CONTAINER` (default `patient-documents`)
+- `AZURE_STORAGE_PUBLIC_BASE_URL`
+- `AZURE_UPLOADS_MODE` (`azure-only`, `local-only`, etc.)
 
-1. `/api/*`: backward-compatible API base
-2. `/api/v1/*`: versioned API base for contract stability
-3. `/api/health/live`: liveness probe
-4. `/api/health/ready`: readiness probe (database check)
-5. `/api/pharmacy/*`: pharmacy order APIs
-6. `/api/labs/*`: lab catalog and order APIs
-7. `/api/documents/:documentId/preview`: PDF preview endpoint
-8. `/api/innovations/patients/:patientId/full-details`: doctor/admin full-detail lookup by patient ID
-9. `/api/innovations/patients/access-by-token/:token`: doctor/admin full-detail lookup by shared QR token
-10. `/api/ai/referral-summary`: AI one-paragraph referral draft endpoint
-11. `/api/appointments/:appointmentId/no-show-followup`: mark no-show and draft follow-up workflow
+### 6.4 AI
 
-## Key Frontend Routes
+- `OLLAMA_BASE_URL`
+- `OLLAMA_MODEL` (default `llama3.1:8b`)
+- `OLLAMA_TIMEOUT_MS` (default `45000`)
+- `AI_RATE_LIMIT_PER_MINUTE` (default `40`)
 
-1. `/ai-copilot`: AI workspace with drafting, simplification, referral summary, and async reply tools
-2. `/doctor/patient-access`: doctor/admin patient access page for ID/token lookup
-3. `/innovations`: innovation workflows (triage, vitals, care plans, emergency, async follow-up)
+### 6.5 Operations
 
-## API Contract Standard
+- `APPLICATIONINSIGHTS_CONNECTION_STRING` (optional)
+- `ENABLE_REMINDER_CRON` (`true` to auto-dispatch)
+- `REMINDER_CRON_INTERVAL_MS`
+- `REMINDER_CRON_BATCH_LIMIT`
+- `LOG_LEVEL`
 
-1. New integrations should prefer `/api/v1/*`.
-2. API errors return:
-   - `error`
-   - `code`
-   - `requestId`
-   - `timestamp`
-3. OpenAPI baseline: `docs/openapi.yaml`.
+### 6.6 Security and administration
 
-## Observability Standard
+- `ADMIN_INVITE_CODE` (optional)
 
-1. Every request includes `X-Request-Id`.
-2. Server request logs are structured JSON.
-3. Health probes are available for uptime/dependency monitoring.
+## 7. Seeded Accounts
 
-## Testing
+After `npm run db:seed`:
 
-Run:
+- Patient: `patient1@example.com` / `Password123!`
+- Patient: `patient2@example.com` / `Password123!`
+- Doctor: `doctor1@example.com` / `Password123!`
+- Doctor: `doctor2@example.com` / `Password123!`
+- Admin: `admin@example.com` / `Password123!`
+- Help worker: `helper1@example.com` / `Password123!`
 
-`npm test`
+## 8. NPM Scripts
 
-Current tests validate session behavior, SPA fallback, auth protection, versioned API compatibility, and health endpoints.
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Start backend app with nodemon |
+| `npm start` | Production startup (`prestart` + server) |
+| `npm run start:azure` | Explicit Azure startup script |
+| `npm run frontend:dev` | Start Vite dev server |
+| `npm run frontend:build` | Build frontend bundle |
+| `npm run frontend:preview` | Preview built frontend |
+| `npm run prisma:generate` | Generate Prisma client |
+| `npm run db:migrate` | Prisma dev migration |
+| `npm run db:deploy` | Prisma deploy migration |
+| `npm run db:seed` | Seed baseline users and data |
+| `npm run test` | Jest suite |
+| `npm run ci` | Lint + test + prisma generate + frontend build |
+| `npm run mobile:build` | Build web bundle for Capacitor |
+| `npm run mobile:sync` | Build and sync Capacitor assets |
+| `npm run mobile:add:android` | Add Android platform |
+| `npm run mobile:add:ios` | Add iOS platform |
+| `npm run mobile:open:android` | Open Android Studio project |
 
-## CI Quality Gates
+## 9. Backend Architecture
 
-GitHub Actions workflow at `.github/workflows/ci.yml` runs:
+Core startup path:
+- `app.js` initializes env, telemetry, optional reminder cron, and server lifecycle
+- `apps/backend/server/create-app.js` wires middleware, APIs, static assets, and SPA fallback
+- `apps/backend/server/create-server.js` wraps HTTP server + Socket.IO initialization
 
-1. Dependency install
-2. Lint
-3. Test
-4. Prisma client generation
-5. Frontend build
+Key middleware:
+- Request context and request ID
+- API mode adaptation for JSON clients
+- Auth session attachment
+- Role authorization
+- Structured error handling
 
-## Deployment Notes
+## 10. API Surface (High Level)
 
-For Azure production deployment and hardening guidance, use `azure-deploy.md`.
+Both prefixes are active:
+- `/api/*`
+- `/api/v1/*`
 
-## Mobile Wrapper Notes
+Health and session:
+- `GET /health/live`
+- `GET /health/ready`
+- `GET /session`
 
-Capacitor wrapper configuration is tracked in `capacitor.config.ts`, and usage steps are documented in `docs/CAPACITOR.md`.
+Domain route groups:
+- `/auth`
+- `/users`
+- `/doctors`
+- `/patients`
+- `/appointments`
+- `/calls`
+- `/prescriptions`
+- `/documents`
+- `/pharmacy`
+- `/labs`
+- `/reminders`
+- `/support`
+- `/ai`
+- `/innovations`
+- `/medicines`
 
-Current mobile scope is wrapper readiness for the existing web app bundle; native-only feature parity is out of scope.
+OpenAPI baseline is maintained in `docs/openapi.yaml`.
 
-## Product Documentation
+## 11. Frontend Route Map
 
-- Product requirements and acceptance criteria: `docs/PRD.md`
-- Production deployment hardening checklist: `docs/production-readiness.md`
+Public routes:
+- `/`
+- `/auth/login`
+- `/auth/register`
+- `/privacy-policy`
+- `/terms-of-service`
+- `/help-center`
+
+Authenticated routes:
+- `/dashboard`
+- `/book`
+- `/appointments`
+- `/appointments/impact`
+- `/appointments/:appointmentId`
+- `/calls/:appointmentId`
+- `/prescriptions/:appointmentId`
+- `/doctors`
+- `/doctors/:doctorId`
+- `/doctors/me/slots` (doctor)
+- `/doctors/me/analytics` (doctor)
+- `/profile`
+- `/users/me`
+- `/patients/workspace` (patient)
+- `/patients/me`
+- `/medicines` (patient)
+- `/pharmacy/orders`
+- `/labs/tests`
+- `/reminders`
+- `/ai-copilot`
+- `/doctor/patient-access` (doctor/admin)
+- `/innovations`
+- `/support/consents` (patient/help_worker)
+- `/pdf-preview`
+
+## 12. Major Functional Modules
+
+### 12.1 Consultation and appointments
+- Booking flow with doctor, slot, mode, and family context
+- Appointment detail and lifecycle actions
+- Presence and call readiness helpers
+- No-show follow-up action flow
+
+### 12.2 Prescriptions and medicine workflows
+- Doctor prescription creation and update
+- PDF generation and preview
+- Handoff code support
+- Patient medicine cabinet and medicine search
+
+### 12.3 Labs and pharmacy
+- Pharmacy order timeline and status updates
+- Lab catalog, orders, status progression, and report attach
+- PDF preview integration for reports and prescriptions
+
+### 12.4 AI draft workflows
+- Context endpoint and role-aware draft tools
+- Draft note, reminder text, referral summary, async reply support
+- Translation and helper guidance endpoints
+- Review-required metadata policy for outputs
+
+### 12.5 Innovation and care support
+- Vitals and trends
+- Care plans and check-ins
+- Emergency escalation workflow
+- External consult threads/messages
+- Second-opinion request and audit trail
+- Patient QR token sharing and doctor/admin access-by-token
+- Consent and helper delegation controls
+
+## 13. Data Model Summary
+
+Primary models include:
+- Identity and roles: `User`, `PatientProfile`, `DoctorProfile`
+- Visits and consults: `Slot`, `Appointment`, `CallSession`, `DoctorReview`
+- Clinical records: `Document`, `Prescription`, `ConsultationVital`, `Referral`
+- Orders and tests: `PharmacyOrder`, `LabTestCatalog`, `LabOrder`, `LabOrderItem`
+- Care coordination: `ReminderJob`, `CareSupportLink`, `ConsentAudit`, `PatientAccessToken`
+- Extended innovation set: care plans, emergencies, external consult threads, voice notes, second opinions
+
+Schema source of truth: `prisma/schema.prisma`
+
+## 14. Security and Reliability
+
+- Helmet CSP enabled
+- Global rate limiting enabled
+- Auth via secure cookie JWT
+- Role-gated endpoints and ACL checks
+- Structured request IDs in response headers
+- Readiness and liveness probes for orchestration
+
+## 15. Testing and Quality
+
+Run tests:
+
+```bash
+npm test
+```
+
+Current automated coverage includes:
+- Session endpoint behavior
+- Versioned API parity checks (`/api` vs `/api/v1`)
+- Health endpoints
+- SPA fallback rendering
+- Unauthorized access baseline checks
+
+Extra QA reports and checklist outputs are available in `qa-reports/`.
+
+## 16. Deployment and Operations Documentation
+
+- API reference (route matrix): `docs/API.md`
+- Azure deployment guide: `azure-deploy.md`
+- Production readiness gates: `docs/production-readiness.md`
+- Product requirements: `docs/PRD.md`
+- UX and interaction design spec: `design.md`
+- Capacitor wrapper workflow: `docs/CAPACITOR.md`
+
+## 17. Mobile Wrapper Support
+
+Capacitor configuration is included in `capacitor.config.ts`.
+
+Use:
+
+```bash
+npm run mobile:sync
+npm run mobile:add:android
+npm run mobile:open:android
+```
+
+Current scope is wrapper readiness for the web app bundle (not native feature parity).
+
+## 18. Troubleshooting
+
+### 18.1 Frontend not loading on port 3000
+- Run `npm run frontend:build`
+- Restart server with `npm run dev`
+
+### 18.2 Database readiness failing
+- Ensure PostgreSQL is reachable from `DATABASE_URL`
+- Run `npm run db:deploy` (or `npm run db:migrate` locally)
+
+### 18.3 Missing Prisma client
+- Run `npm run prisma:generate`
+
+### 18.4 Socket or call connection issues in production
+- Verify `APP_BASE_URL` is set to correct HTTPS origins
+- Ensure WebSockets are enabled in host platform
+
+### 18.5 AI endpoint fallback behavior
+- If `OLLAMA_BASE_URL` is unset/unreachable, AI endpoints use fallback-safe behavior
+- Check API response metadata for fallback indicators

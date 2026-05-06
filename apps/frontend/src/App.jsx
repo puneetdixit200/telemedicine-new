@@ -1,4 +1,4 @@
-﻿import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Link,
   Navigate,
@@ -19,7 +19,6 @@ const SessionContext = createContext(null);
 const RuralSupportContext = createContext(null);
 const AI_OFFLINE_DRAFTS_KEY = 'ai:offline-drafts:v1';
 const ASYNC_REPLY_QUEUE_KEY = 'async:reply-queue:v1';
-const PATIENT_TOUR_KEY = 'patient:first-tour:v1';
 const HELPER_ONBOARDING_KEY = 'helper:onboarding:v1';
 
 function readJsonStorage(key, fallback) {
@@ -116,12 +115,18 @@ function isPdfContentType(contentType) {
   return String(contentType || '').toLowerCase().includes('pdf');
 }
 
-function buildPdfPreviewLink(sourcePath, title = '', downloadPath = '') {
+function extractFirstUuid(value) {
+  const match = String(value || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+  return match ? match[0] : '';
+}
+
+function buildPdfPreviewLink(sourcePath, title = '', downloadPath = '', appointmentId = '') {
   const source = String(sourcePath || '').trim();
   const params = new URLSearchParams();
   params.set('src', source);
   if (title) params.set('title', String(title));
   if (downloadPath) params.set('download', String(downloadPath));
+  if (appointmentId) params.set('appointmentId', String(appointmentId));
   return `/pdf-preview?${params.toString()}`;
 }
 
@@ -153,6 +158,370 @@ function parseCustomLabTests(rawText) {
       return { name, sampleType, instructions };
     })
     .filter((item) => item.name);
+}
+
+function formatSideEffectsText(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  return String(value || '').trim();
+}
+
+const LANGUAGE_SPEECH_CODE_MAP = {
+  english: 'en-IN',
+  hindi: 'hi-IN',
+  bengali: 'bn-IN',
+  marathi: 'mr-IN',
+  tamil: 'ta-IN',
+  telugu: 'te-IN',
+  gujarati: 'gu-IN',
+  kannada: 'kn-IN',
+  malayalam: 'ml-IN',
+  punjabi: 'pa-IN',
+  odia: 'or-IN',
+  oriya: 'or-IN',
+  urdu: 'ur-IN',
+  assamese: 'as-IN',
+  nepali: 'ne-IN'
+};
+
+const LANGUAGE_NAME_BY_CODE = {
+  en: 'English',
+  hi: 'Hindi',
+  bn: 'Bengali',
+  mr: 'Marathi',
+  ta: 'Tamil',
+  te: 'Telugu',
+  gu: 'Gujarati',
+  kn: 'Kannada',
+  ml: 'Malayalam',
+  pa: 'Punjabi',
+  or: 'Odia',
+  ur: 'Urdu',
+  as: 'Assamese',
+  ne: 'Nepali'
+};
+
+function getAppSelectedLanguage(userLanguage) {
+  const fromUser = String(userLanguage || '').trim();
+  if (typeof document === 'undefined') return fromUser || 'English';
+
+  const htmlLang = String(document.documentElement?.lang || '').trim();
+  const cookieMatch = document.cookie.match(/(?:^|; )googtrans=([^;]+)/i);
+  const cookieValue = cookieMatch ? decodeURIComponent(cookieMatch[1]) : '';
+  const cookieParts = cookieValue.split('/').filter(Boolean);
+  const googleTranslatedLang = cookieParts.length ? cookieParts[cookieParts.length - 1] : '';
+
+  return googleTranslatedLang || htmlLang || fromUser || 'English';
+}
+
+function resolvePreferredLanguageName(preferredLanguage) {
+  const raw = String(preferredLanguage || '').trim();
+  if (!raw) return 'English';
+
+  const lower = raw.toLowerCase();
+  if (LANGUAGE_SPEECH_CODE_MAP[lower]) {
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }
+
+  const codeLike = lower.replace('_', '-');
+  if (/^[a-z]{2,3}(?:-[a-z]{2})?$/.test(codeLike)) {
+    const code = codeLike.split('-')[0];
+    return LANGUAGE_NAME_BY_CODE[code] || 'English';
+  }
+
+  if (/हिंदी|हिन्दी/.test(raw)) return 'Hindi';
+  if (/বাংলা/.test(raw)) return 'Bengali';
+  if (/मराठी/.test(raw)) return 'Marathi';
+  if (/தமிழ்/.test(raw)) return 'Tamil';
+  if (/తెలుగు/.test(raw)) return 'Telugu';
+
+  return raw;
+}
+
+function extractSimplifiedPrescriptionText(result) {
+  const payload = result && typeof result === 'object' ? result : {};
+  const chunks = [];
+
+  const plain = String(payload.plainLanguage || '').trim();
+  if (plain) chunks.push(plain);
+
+  const overview = String(payload.overview || '').trim();
+  if (overview) chunks.push(overview);
+
+  if (Array.isArray(payload.dailyPlan) && payload.dailyPlan.length) {
+    const dailyPlanText = payload.dailyPlan
+      .slice(0, 6)
+      .map((entry, index) => {
+        const time = String(entry?.time || '').trim();
+        const whatToTake = String(entry?.whatToTake || '').trim();
+        const tips = String(entry?.tips || '').trim();
+        const parts = [time ? `Dose ${index + 1} at ${time}.` : `Dose ${index + 1}.`, whatToTake, tips].filter(Boolean);
+        return parts.join(' ');
+      })
+      .filter(Boolean)
+      .join(' ');
+
+    if (dailyPlanText) chunks.push(dailyPlanText);
+  }
+
+  if (Array.isArray(payload.dosAndDonts) && payload.dosAndDonts.length) {
+    chunks.push(`Important advice: ${payload.dosAndDonts.map((item) => String(item || '').trim()).filter(Boolean).join('. ')}.`);
+  }
+
+  if (Array.isArray(payload.seekHelpIf) && payload.seekHelpIf.length) {
+    chunks.push(`Seek help if: ${payload.seekHelpIf.map((item) => String(item || '').trim()).filter(Boolean).join('. ')}.`);
+  }
+
+  return stripHandoffCodeFromNarration(chunks.join(' ').trim());
+}
+
+async function translateNarrationForAppointment({ appointmentId, text, targetLanguage }) {
+  const sanitized = stripHandoffCodeFromNarration(text);
+  if (!sanitized) return '';
+
+  const normalizedTarget = resolvePreferredLanguageName(targetLanguage);
+  if (!normalizedTarget || normalizedTarget.toLowerCase() === 'english') {
+    return sanitized;
+  }
+
+  if (!appointmentId) {
+    return sanitized;
+  }
+
+  const res = await apiRequest('/api/ai/translate-chat', {
+    method: 'POST',
+    body: {
+      appointmentId,
+      text: sanitized,
+      sourceLanguage: 'auto',
+      targetLanguage: normalizedTarget
+    }
+  });
+
+  if (!res.ok) {
+    return sanitized;
+  }
+
+  const translated = stripHandoffCodeFromNarration(String(res.data?.result?.translatedText || '').trim());
+  return translated || sanitized;
+}
+
+function resolveSpeechLanguageCode(preferredLanguage) {
+  const raw = String(preferredLanguage || '').trim();
+  if (!raw) return 'en-IN';
+
+  if (/^[a-z]{2,3}(?:-[a-z]{2})?$/i.test(raw)) {
+    if (raw.includes('-')) return raw;
+    return raw.toLowerCase() === 'en' ? 'en-IN' : `${raw.toLowerCase()}-IN`;
+  }
+
+  return LANGUAGE_SPEECH_CODE_MAP[raw.toLowerCase()] || 'en-IN';
+}
+
+function resolveSpeechVoice(voices, languageCode) {
+  const voiceList = Array.isArray(voices) ? voices : [];
+  const code = String(languageCode || '').toLowerCase();
+  const baseCode = code.split('-')[0];
+
+  const ranked = voiceList
+    .map((voice) => {
+      const lang = String(voice.lang || '').toLowerCase();
+      const name = String(voice.name || '').toLowerCase();
+      let score = 0;
+
+      if (lang === code) score += 14;
+      else if (lang.startsWith(`${baseCode}-`)) score += 10;
+      else if (lang === baseCode) score += 8;
+
+      if (/(neural|natural|wavenet|premium)/.test(name)) score += 4;
+      if (/(google|microsoft|samantha|zira|aria)/.test(name)) score += 2;
+      if (!voice.localService) score += 1;
+
+      return { voice, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return ranked[0]?.voice || null;
+}
+
+function hasMatchingSpeechVoice(voices, languageCode) {
+  const voiceList = Array.isArray(voices) ? voices : [];
+  const code = String(languageCode || '').toLowerCase();
+  const baseCode = code.split('-')[0];
+
+  return voiceList.some((voice) => {
+    const lang = String(voice?.lang || '').toLowerCase();
+    return lang === code || lang.startsWith(`${baseCode}-`) || lang === baseCode;
+  });
+}
+
+function loadSpeechVoices() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) {
+    return Promise.resolve([]);
+  }
+
+  const synth = window.speechSynthesis;
+  const immediate = synth.getVoices();
+  if (immediate.length) {
+    return Promise.resolve(immediate);
+  }
+
+  return new Promise((resolve) => {
+    let finished = false;
+    const settle = () => {
+      if (finished) return;
+      finished = true;
+      synth.removeEventListener?.('voiceschanged', handleVoicesChanged);
+      resolve(synth.getVoices());
+    };
+
+    const handleVoicesChanged = () => {
+      settle();
+    };
+
+    synth.addEventListener?.('voiceschanged', handleVoicesChanged);
+    window.setTimeout(settle, 450);
+  });
+}
+
+function simplifyFrequencyForNarration(frequency, language = 'english') {
+  const raw = String(frequency || '').trim();
+  if (!raw) {
+    return language === 'hindi' ? 'डॉक्टर के बताए समय पर' : 'as prescribed';
+  }
+
+  const normalized = raw.toLowerCase();
+  const isOnce = /once\s*(daily|a\s*day)|1\s*time\s*(daily|a\s*day)|od\b/.test(normalized);
+  const isTwice = /twice\s*(daily|a\s*day)|2\s*times\s*(daily|a\s*day)|bd\b/.test(normalized);
+  const isThrice = /thrice\s*(daily|a\s*day)|3\s*times\s*(daily|a\s*day)|tid\b/.test(normalized);
+
+  if (language === 'hindi') {
+    if (isOnce) return 'रोज 1 बार';
+    if (isTwice) return 'सुबह और शाम';
+    if (isThrice) return 'सुबह, दोपहर, और शाम';
+    return raw;
+  }
+
+  if (isOnce) return '1 time a day';
+  if (isTwice) return 'Morning and evening';
+  if (isThrice) return 'Morning, afternoon, evening';
+  return raw;
+}
+
+function ensureSentence(text, fallback = '') {
+  const value = String(text || fallback || '').trim();
+  if (!value) return '';
+  return /[.!?]$/.test(value) ? value : `${value}.`;
+}
+
+function buildPrescriptionNarrationText({ patientName, doctorName, diagnosis, items, instructions, followUpAt }) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const diagnosisText = String(diagnosis || 'not specified').trim() || 'not specified';
+  const instructionSimple = ensureSentence(instructions, 'Follow doctor instructions');
+  const followUpText = followUpAt ? new Date(followUpAt).toLocaleDateString('en-US') : '';
+
+  const medicineLines = safeItems.length
+    ? safeItems
+        .map((item) => {
+          const medicineName = String(item?.name || 'this medicine').trim() || 'this medicine';
+          const dosage = String(item?.dosage || 'as prescribed').trim() || 'as prescribed';
+          const frequencySimple = simplifyFrequencyForNarration(item?.frequency, 'english');
+          const duration = String(item?.duration || 'as advised').trim() || 'as advised';
+
+          return [
+            `Take ${medicineName}.`,
+            `Take ${dosage} ${frequencySimple}.`,
+            instructionSimple,
+            `Take this medicine for ${duration}.`,
+            followUpText ? `If not better, visit doctor on ${followUpText}.` : 'If not better, visit doctor.'
+          ].join(' ');
+        })
+        .join(' ')
+    : 'Take medicines only as prescribed. If not better, visit doctor.';
+
+  return [`You have ${diagnosisText}.`, medicineLines].join(' ').trim();
+}
+
+function containsDevanagariScript(text) {
+  return /[\u0900-\u097F]/.test(String(text || ''));
+}
+
+function buildPrescriptionNarrationTextLocalized({ language, patientName, doctorName, diagnosis, items, instructions, followUpAt }) {
+  const resolvedLanguage = resolvePreferredLanguageName(language).toLowerCase();
+  if (resolvedLanguage !== 'hindi') {
+    return buildPrescriptionNarrationText({ patientName, doctorName, diagnosis, items, instructions, followUpAt });
+  }
+
+  const safeItems = Array.isArray(items) ? items : [];
+  const diagnosisText = String(diagnosis || 'उल्लेखित नहीं').trim() || 'उल्लेखित नहीं';
+  const instructionSimple = ensureSentence(instructions, 'डॉक्टर की सरल सलाह मानें');
+  const followUpText = followUpAt ? new Date(followUpAt).toLocaleDateString('hi-IN') : '';
+
+  const medicationNarration = safeItems.length
+    ? safeItems
+        .map((item) => {
+          const medicineName = String(item?.name || 'यह दवा').trim() || 'यह दवा';
+          const dosage = String(item?.dosage || 'डॉक्टर के अनुसार मात्रा').trim() || 'डॉक्टर के अनुसार मात्रा';
+          const frequencySimple = simplifyFrequencyForNarration(item?.frequency, 'hindi');
+          const duration = String(item?.duration || 'डॉक्टर की सलाह तक').trim() || 'डॉक्टर की सलाह तक';
+
+          return [
+            `${medicineName} लें।`,
+            `${dosage} ${frequencySimple} लें।`,
+            instructionSimple,
+            `यह दवा ${duration} तक लें।`,
+            followUpText ? `ठीक न लगे तो ${followUpText} को डॉक्टर से मिलें।` : 'ठीक न लगे तो डॉक्टर से मिलें।'
+          ].join(' ');
+        })
+        .join(' ')
+    : 'डॉक्टर की बताई दवा ही लें। ठीक न लगे तो डॉक्टर से मिलें।';
+
+  return [`आपको ${diagnosisText} है।`, medicationNarration].join(' ').trim();
+}
+
+async function ensureNarrationLanguage({ appointmentId, targetLanguage, preferredText, fallbackText }) {
+  const languageName = resolvePreferredLanguageName(targetLanguage);
+  const normalizedTarget = String(languageName || 'English').trim();
+  const sanitizedPreferred = stripHandoffCodeFromNarration(preferredText);
+  const sanitizedFallback = stripHandoffCodeFromNarration(fallbackText);
+
+  let candidate = sanitizedPreferred || sanitizedFallback;
+  if (!candidate) return '';
+
+  if (normalizedTarget.toLowerCase() !== 'english') {
+    candidate = await translateNarrationForAppointment({
+      appointmentId,
+      text: candidate,
+      targetLanguage: normalizedTarget
+    });
+  }
+
+  candidate = stripHandoffCodeFromNarration(candidate);
+  if (normalizedTarget.toLowerCase() === 'hindi' && !containsDevanagariScript(candidate)) {
+    if (sanitizedFallback && containsDevanagariScript(sanitizedFallback)) {
+      return sanitizedFallback;
+    }
+  }
+
+  return candidate || sanitizedFallback;
+}
+
+function stripHandoffCodeFromNarration(text) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+
+  const sentences = normalized.match(/[^.!?]+[.!?]?/g) || [normalized];
+  return sentences
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && !/handoff\s*code|pharmacist\s*handoff/i.test(sentence))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function collectAppointmentChoices(payload) {
@@ -584,209 +953,82 @@ function RuralSupportLayer() {
 function ProtectedLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, refreshSession } = useSession();
-  const { isOnline, networkType, isDataSaver, setIsDataSaver } = useRuralSupport();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [languageOpen, setLanguageOpen] = useState(false);
-  const [shareProfileOpen, setShareProfileOpen] = useState(false);
-  const [shareProfileBusy, setShareProfileBusy] = useState(false);
-  const [shareProfileData, setShareProfileData] = useState(null);
-  const [shareProfileMessage, setShareProfileMessage] = useState('');
-  const [profileQrImage, setProfileQrImage] = useState('');
-  const [profileQrError, setProfileQrError] = useState(false);
-  const menuRef = useRef(null);
+  const { user } = useSession();
+  const [globalSearchText, setGlobalSearchText] = useState('');
 
   if (!user) {
     return <Navigate to="/auth/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
-  const userInitial = String(user.fullName || 'U').slice(0, 1).toUpperCase();
-  const isCallRoute = /^\/calls\/[^/]+$/.test(location.pathname);
   const pathname = location.pathname;
-  const isDoctor = user.role === 'doctor';
-  const isPatient = user.role === 'patient';
-  const isHelper = user.role === 'help_worker';
+  const isCallRoute = /^\/calls\/[^/]+$/.test(pathname);
 
   const isPathActive = (target) => {
     if (target === '/dashboard') return pathname === '/dashboard';
-    if (target === '/appointments') return pathname === '/appointments' || pathname === '/appointments/impact';
-    if (target === '/patients/workspace') return pathname === '/patients/workspace' || pathname === '/patients/me';
-    if (target === '/doctors/me/analytics') return pathname === '/doctors/me/analytics' || pathname === '/doctors/me/slots';
-    if (target === '/support/consents') return pathname === '/support/consents';
+    if (target === '/appointments') return pathname === '/appointments' || pathname.startsWith('/appointments/');
     if (target === '/ai-copilot') return pathname === '/ai-copilot';
-    if (target === '/doctor/patient-access') return pathname === '/doctor/patient-access';
-    if (target === '/innovations') return pathname === '/innovations';
     if (target === '/profile') return pathname === '/profile' || pathname === '/users/me';
     return pathname === target;
   };
 
-  const mobileNavItems = isPatient
-    ? [
-        { to: '/dashboard', label: 'Home', icon: 'home' },
-        { to: '/appointments', label: 'Visits', icon: 'calendar_today' },
-        { to: '/patients/workspace', label: 'Health', icon: 'monitor_heart' },
-        { to: '/ai-copilot', label: 'AI Help', icon: 'support_agent' }
-      ]
-    : isDoctor
-      ? [
-          { to: '/dashboard', label: 'Home', icon: 'home' },
-          { to: '/appointments', label: 'Visits', icon: 'calendar_today' },
-          { to: '/doctors/me/analytics', label: 'Health', icon: 'monitor_heart' },
-          { to: '/doctor/patient-access', label: 'Access', icon: 'badge' },
-          { to: '/ai-copilot', label: 'AI Help', icon: 'support_agent' }
-        ]
-      : [
-          { to: '/dashboard', label: 'Home', icon: 'home' },
-          { to: '/appointments', label: 'Visits', icon: 'calendar_today' },
-          { to: '/support/consents', label: 'Support', icon: 'volunteer_activism' },
-          { to: '/ai-copilot', label: 'AI Help', icon: 'support_agent' }
-        ];
+  const mobileNavItems = [
+    { to: '/dashboard', label: 'Home', icon: 'home' },
+    { to: '/appointments', label: 'Visits', icon: 'calendar_today' },
+    { to: '/ai-copilot', label: 'AI Help', icon: 'support_agent' },
+    { to: '/profile', label: 'Profile', icon: 'person' }
+  ];
 
   const hideMobileNav =
     /^\/appointments\/[^/]+$/.test(pathname) ||
     /^\/calls\/[^/]+$/.test(pathname) ||
     /^\/prescriptions\/[^/]+$/.test(pathname);
 
-  const onLogout = async () => {
-    await apiRequest('/api/auth/logout', { method: 'POST' });
-    await refreshSession();
-    navigate('/auth/login', { replace: true });
-  };
+  const handleGlobalSearch = (event) => {
+    event.preventDefault();
 
-  const profileShareUrl = useMemo(() => {
-    const raw = String(shareProfileData?.qrUrl || '').trim();
-    if (!raw) return '';
-    if (/^https?:\/\//i.test(raw)) return raw;
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}${raw.startsWith('/') ? '' : '/'}${raw}`;
-  }, [shareProfileData]);
-
-  useEffect(() => {
-    let disposed = false;
-
-    if (!profileShareUrl) {
-      setProfileQrImage('');
-      setProfileQrError(false);
-      return undefined;
+    const rawQuery = String(globalSearchText || '').trim();
+    if (!rawQuery) {
+      navigate('/dashboard');
+      return;
     }
 
-    QRCode.toDataURL(profileShareUrl, {
-      width: 220,
-      margin: 1,
-      errorCorrectionLevel: 'M'
-    })
-      .then((dataUrl) => {
-        if (disposed) return;
-        setProfileQrImage(dataUrl);
-        setProfileQrError(false);
-      })
-      .catch(() => {
-        if (disposed) return;
-        setProfileQrImage('');
-        setProfileQrError(true);
-      });
+    const normalized = rawQuery.toLowerCase();
+    const appointmentId = extractFirstUuid(rawQuery);
+    if (appointmentId) {
+      navigate(`/appointments/${appointmentId}`);
+      setGlobalSearchText('');
+      return;
+    }
 
-    return () => {
-      disposed = true;
-    };
-  }, [profileShareUrl]);
+    const routeRules = [
+      { keywords: ['home', 'dashboard'], to: '/dashboard' },
+      { keywords: ['visit', 'visits', 'appointment', 'appointments'], to: '/appointments' },
+      { keywords: ['ai', 'copilot', 'help'], to: '/ai-copilot' },
+      { keywords: ['profile', 'account'], to: '/profile' },
+      { keywords: ['reminder', 'reminders'], to: '/reminders' },
+      { keywords: ['lab', 'labs', 'test', 'tests', 'report'], to: '/labs/tests' },
+      { keywords: ['pharmacy', 'drug order', 'medicine order', 'orders'], to: '/pharmacy/orders' },
+      { keywords: ['medicine', 'medicines', 'tablet', 'prescription'], to: user.role === 'patient' ? '/medicines' : '/pharmacy/orders' },
+      { keywords: ['support', 'helper', 'consent'], to: '/support/consents', roles: ['patient', 'help_worker'] },
+      { keywords: ['patient access', 'share token', 'access token'], to: '/doctor/patient-access', roles: ['doctor', 'admin'] },
+      { keywords: ['innovation', 'triage', 'vitals', 'emergency', 'refill', 'trust'], to: '/innovations' },
+      { keywords: ['book', 'booking'], to: user.role === 'patient' ? '/book' : '/appointments' }
+    ];
 
-  const createProfileShareQr = async () => {
-    if (user.role !== 'patient') return;
-
-    setShareProfileBusy(true);
-    setShareProfileMessage('');
-
-    const res = await apiRequest('/api/innovations/patients/qr-token', {
-      method: 'POST',
-      body: {
-        patientId: user.id,
-        label: 'Profile share',
-        expiresInHours: 12
-      }
+    const matchedRoute = routeRules.find((rule) => {
+      if (Array.isArray(rule.roles) && !rule.roles.includes(user.role)) return false;
+      return rule.keywords.some((keyword) => normalized.includes(keyword));
     });
 
-    setShareProfileBusy(false);
-
-    if (!res.ok) {
-      setShareProfileMessage(res.data?.error || res.data?.message || 'Could not generate profile share QR.');
+    if (matchedRoute) {
+      navigate(matchedRoute.to);
+      setGlobalSearchText('');
       return;
     }
 
-    setShareProfileData(res.data || null);
-    setShareProfileOpen(true);
-    setShareProfileMessage('Profile QR generated. It will expire in 12 hours.');
+    navigate(`/doctors?query=${encodeURIComponent(rawQuery)}`);
+    setGlobalSearchText('');
   };
-
-  const copyProfileShareLink = async () => {
-    if (!profileShareUrl) return;
-
-    try {
-      await navigator.clipboard.writeText(profileShareUrl);
-      setShareProfileMessage('Profile link copied.');
-    } catch (_error) {
-      setShareProfileMessage('Copy failed. Please copy the link manually.');
-    }
-  };
-
-  const shareProfileLink = async () => {
-    if (!profileShareUrl) return;
-
-    if (!navigator.share) {
-      await copyProfileShareLink();
-      return;
-    }
-
-    try {
-      await navigator.share({
-        title: `${user.fullName} profile`,
-        text: `Shared profile for ${user.fullName}`,
-        url: profileShareUrl
-      });
-      setShareProfileMessage('Profile link shared.');
-    } catch (_error) {}
-  };
-
-  const shareProfileOnWhatsApp = () => {
-    if (!profileShareUrl) return;
-    const shareText = `Shared health profile: ${profileShareUrl}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer');
-  };
-
-  useEffect(() => {
-    setMenuOpen(false);
-    setLanguageOpen(false);
-    setShareProfileOpen(false);
-    setShareProfileMessage('');
-  }, [location.pathname]);
-
-  useEffect(() => {
-    if (!menuOpen) {
-      setLanguageOpen(false);
-      setShareProfileOpen(false);
-      return undefined;
-    }
-
-    const onDocumentClick = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setMenuOpen(false);
-      }
-    };
-
-    const onEsc = (event) => {
-      if (event.key === 'Escape') {
-        setMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', onDocumentClick);
-    document.addEventListener('keydown', onEsc);
-
-    return () => {
-      document.removeEventListener('mousedown', onDocumentClick);
-      document.removeEventListener('keydown', onEsc);
-    };
-  }, [menuOpen]);
 
   if (isCallRoute) {
     return (
@@ -800,221 +1042,20 @@ function ProtectedLayout() {
 
   return (
     <div className="app-shell">
-      <nav className="main-nav unified-nav" aria-label="Primary navigation">
-        <div className="brand sanctuary-brand">
-          <span className="material-symbols-outlined sanctuary-brand-icon" aria-hidden="true">spa</span>
-          <div>
-            <h1>Sanctuary Health</h1>
-          <p>Connected care for patients and doctors</p>
-          </div>
-        </div>
-
-        <div className="nav-links">
-          <Link className="nav-btn" to="/dashboard">
-            Home
-          </Link>
-          {isPatient ? (
-            <Link className="nav-btn" to="/book">
-              Book Visit
-            </Link>
-          ) : null}
-          <Link className="nav-btn" to="/appointments">
-            Appointments
-          </Link>
-          <Link className="nav-btn" to="/pharmacy/orders">
-            Pharmacy
-          </Link>
-          <Link className="nav-btn" to="/labs/tests">
-            Lab Tests
-          </Link>
-          <Link className="nav-btn" to="/reminders">
-            Reminders
-          </Link>
-          <Link className="nav-btn" to="/ai-copilot">
-            AI Copilot
-          </Link>
-          {isDoctor ? (
-            <Link className="nav-btn" to="/doctor/patient-access">
-              Patient Access
-            </Link>
-          ) : null}
-          <Link className="nav-btn" to="/innovations">
-            Innovations
-          </Link>
-          {isPatient ? (
-            <Link className="nav-btn" to="/doctors">
-              Doctors
-            </Link>
-          ) : null}
-          {isDoctor ? (
-            <Link className="nav-btn" to="/doctors/me/slots">
-              My Slots
-            </Link>
-          ) : null}
-          {isDoctor ? (
-            <Link className="nav-btn" to="/doctors/me/analytics">
-              Analytics
-            </Link>
-          ) : null}
-          {isPatient ? (
-            <Link className="nav-btn" to="/patients/workspace">
-              Family &amp; Records
-            </Link>
-          ) : null}
-          {isPatient || isHelper ? (
-            <Link className="nav-btn" to="/support/consents">
-              {isHelper ? 'Delegated Support' : 'Care Support'}
-            </Link>
-          ) : null}
-        </div>
-
-        <div className="profile-menu" ref={menuRef}>
-          <button
-            className="user-chip user-chip-btn sanctuary-profile-trigger"
-            type="button"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((prev) => !prev)}
-          >
-            <span className="sanctuary-profile-copy" aria-hidden="true">
-              <strong>{user.fullName}</strong>
-              <span className={`role ${user.role}`}>{user.role}</span>
-            </span>
-            <span className="sanctuary-profile-avatar">{userInitial}</span>
-            <span className="material-symbols-outlined menu-caret" aria-hidden="true">
-              arrow_drop_down
-            </span>
+      <nav className="main-nav unified-nav compact-search-nav" aria-label="Primary navigation">
+        <form className="global-nav-search" role="search" onSubmit={handleGlobalSearch}>
+          <span className="material-symbols-outlined" aria-hidden="true">search</span>
+          <input
+            type="search"
+            value={globalSearchText}
+            onChange={(event) => setGlobalSearchText(event.target.value)}
+            placeholder="Search doctors, visits, labs, medicines, AI help..."
+            aria-label="Search everywhere"
+          />
+          <button type="submit" aria-label="Run global search">
+            Go
           </button>
-
-          <div className={`profile-menu-panel sanctuary-profile-panel ${menuOpen ? 'open' : ''}`} role="menu" aria-label="Profile menu" aria-hidden={!menuOpen}>
-              <Link className="profile-menu-item sanctuary-profile-item" to="/profile" role="menuitem">
-                <span className="sanctuary-profile-item-icon" aria-hidden="true">
-                  <span className="material-symbols-outlined">person</span>
-                </span>
-                <span>Profile</span>
-              </Link>
-              {user.role === 'patient' ? (
-                <Link className="profile-menu-item sanctuary-profile-item" to="/medicines" role="menuitem">
-                  <span className="sanctuary-profile-item-icon" aria-hidden="true">
-                    <span className="material-symbols-outlined">pill</span>
-                  </span>
-                  <span>My Medicines</span>
-                </Link>
-              ) : null}
-              <Link className="profile-menu-item sanctuary-profile-item" to="/pharmacy/orders" role="menuitem">
-                <span className="sanctuary-profile-item-icon" aria-hidden="true">
-                  <span className="material-symbols-outlined">local_pharmacy</span>
-                </span>
-                <span>Pharmacy Orders</span>
-              </Link>
-              <Link className="profile-menu-item sanctuary-profile-item" to="/labs/tests" role="menuitem">
-                <span className="sanctuary-profile-item-icon" aria-hidden="true">
-                  <span className="material-symbols-outlined">biotech</span>
-                </span>
-                <span>Lab Tests</span>
-              </Link>
-
-              <div className="profile-support-block" role="group" aria-label="Connectivity and language">
-                <p className={`profile-network-status ${isOnline ? 'online' : 'offline'}`}>
-                  <span className="material-symbols-outlined" aria-hidden="true">
-                    {isOnline ? 'network_wifi' : 'wifi_off'}
-                  </span>
-                  <span>{isOnline ? `Network: ${networkType}` : 'Offline mode enabled'}</span>
-                </p>
-
-                <button className="profile-menu-item sanctuary-profile-item profile-inline-toggle" type="button" onClick={() => setIsDataSaver((prev) => !prev)}>
-                  <span className="sanctuary-profile-item-icon" aria-hidden="true">
-                    <span className="material-symbols-outlined">{isDataSaver ? 'speed_0_5x' : 'speed'}</span>
-                  </span>
-                  <span>{isDataSaver ? 'Data Saver ON' : 'Data Saver OFF'}</span>
-                </button>
-
-                <button
-                  className="profile-menu-item sanctuary-profile-item profile-language-trigger"
-                  type="button"
-                  aria-expanded={languageOpen}
-                  aria-controls="profile-language-picker"
-                  onClick={() => {
-                    setLanguageOpen((prev) => !prev);
-                    setShareProfileOpen(false);
-                  }}
-                >
-                  <span className="sanctuary-profile-item-icon" aria-hidden="true">
-                    <span className="material-symbols-outlined">translate</span>
-                  </span>
-                  <span>Language</span>
-                  <span className="material-symbols-outlined profile-language-caret" aria-hidden="true">
-                    {languageOpen ? 'expand_less' : 'expand_more'}
-                  </span>
-                </button>
-
-                <div id="profile-language-picker" className={`profile-language-block ${languageOpen ? 'open' : ''}`}>
-                  <TranslationService variant="inline" />
-                </div>
-
-                {user.role === 'patient' ? (
-                  <>
-                    <button
-                      className="profile-menu-item sanctuary-profile-item profile-qr-trigger"
-                      type="button"
-                      aria-expanded={shareProfileOpen}
-                      aria-controls="profile-share-picker"
-                      onClick={() => {
-                        setShareProfileOpen((prev) => !prev);
-                        setLanguageOpen(false);
-                      }}
-                    >
-                      <span className="sanctuary-profile-item-icon" aria-hidden="true">
-                        <span className="material-symbols-outlined">qr_code_2</span>
-                      </span>
-                      <span>Share Profile QR</span>
-                      <span className="material-symbols-outlined profile-language-caret" aria-hidden="true">
-                        {shareProfileOpen ? 'expand_less' : 'expand_more'}
-                      </span>
-                    </button>
-
-                    <div id="profile-share-picker" className={`profile-share-block ${shareProfileOpen ? 'open' : ''}`}>
-                      <p className="profile-share-note">Token validity: 12 hours</p>
-
-                      {profileShareUrl ? (
-                        <div className="profile-share-preview">
-                          {profileQrImage ? <img src={profileQrImage} alt="Profile share QR code" loading="lazy" /> : null}
-                          {profileQrError ? <p className="profile-share-status">QR preview unavailable on this device. Use the link below.</p> : null}
-                          <a href={profileShareUrl} target="_blank" rel="noreferrer">
-                            {profileShareUrl}
-                          </a>
-                        </div>
-                      ) : null}
-
-                      <div className="profile-share-actions" role="group" aria-label="Profile share actions">
-                        <button type="button" onClick={createProfileShareQr} disabled={shareProfileBusy}>
-                          {shareProfileBusy ? 'Generating...' : profileShareUrl ? 'Regenerate QR' : 'Generate QR'}
-                        </button>
-                        <button type="button" onClick={copyProfileShareLink} disabled={!profileShareUrl}>
-                          Copy Link
-                        </button>
-                        <button type="button" onClick={shareProfileLink} disabled={!profileShareUrl}>
-                          Share
-                        </button>
-                        <button type="button" onClick={shareProfileOnWhatsApp} disabled={!profileShareUrl}>
-                          WhatsApp
-                        </button>
-                      </div>
-
-                      {shareProfileMessage ? <p className="profile-share-status">{shareProfileMessage}</p> : null}
-                    </div>
-                  </>
-                ) : null}
-              </div>
-
-              <button className="profile-menu-item danger sanctuary-profile-item" type="button" role="menuitem" onClick={onLogout}>
-                <span className="sanctuary-profile-item-icon danger" aria-hidden="true">
-                  <span className="material-symbols-outlined">logout</span>
-                </span>
-                <span>Logout</span>
-              </button>
-            </div>
-        </div>
+        </form>
       </nav>
 
       <main className="page-wrap">
@@ -1282,7 +1323,7 @@ function LoginPage() {
                   autoComplete="current-password"
                   value={form.password}
                   onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="Enter your password"
                   required
                 />
                 <button
@@ -1639,10 +1680,6 @@ function DashboardPage() {
   const isDoctor = user.role === 'doctor';
   const isPatient = user.role === 'patient';
   const isHelper = user.role === 'help_worker';
-  const [showPatientTour, setShowPatientTour] = useState(() => {
-    const stored = readJsonStorage(PATIENT_TOUR_KEY, { dismissed: false });
-    return !Boolean(stored?.dismissed);
-  });
   const [helperChecklist, setHelperChecklist] = useState(() => {
     const fallback = {
       confirmPhone: false,
@@ -1657,11 +1694,6 @@ function DashboardPage() {
   useEffect(() => {
     writeJsonStorage(HELPER_ONBOARDING_KEY, helperChecklist);
   }, [helperChecklist]);
-
-  const completeTour = () => {
-    setShowPatientTour(false);
-    writeJsonStorage(PATIENT_TOUR_KEY, { dismissed: true, dismissedAt: Date.now() });
-  };
 
   const handleSeeDoctorNow = async () => {
     setBusy(true);
@@ -1753,27 +1785,6 @@ function DashboardPage() {
   if (isPatient) {
     return (
       <section className="sanctuary-home-page">
-        {showPatientTour ? (
-          <article className="card dashboard-tour-card">
-            <p className="kicker">First-time guide</p>
-            <h3>Start in 3 quick steps</h3>
-            <p className="muted">Book your first visit, keep prep notes ready, and reopen follow-up shortcuts anytime.</p>
-            <div className="dashboard-tour-list">
-              <p>1. Pick a doctor and mode from guided booking.</p>
-              <p>2. Add symptoms before the session starts.</p>
-              <p>3. Use re-book shortcut from completed visits.</p>
-            </div>
-            <div className="row-inline">
-              <Link className="btn" to="/book">
-                Start Booking
-              </Link>
-              <button type="button" className="btn subtle" onClick={completeTour}>
-                Dismiss Tour
-              </button>
-            </div>
-          </article>
-        ) : null}
-
         <div className="sanctuary-home-desktop">
           <section className="sanctuary-home-hero">
             <h2>
@@ -2894,6 +2905,10 @@ function MedicineCabinetPage() {
   const [error, setError] = useState('');
   const [cachedAt, setCachedAt] = useState(null);
   const [usingCached, setUsingCached] = useState(false);
+  const [medicineQuery, setMedicineQuery] = useState('');
+  const [medicineMatches, setMedicineMatches] = useState([]);
+  const [medicineSearchError, setMedicineSearchError] = useState('');
+  const [searchingMedicines, setSearchingMedicines] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2910,12 +2925,19 @@ function MedicineCabinetPage() {
       const detailed = await Promise.all(
         completed.map(async (appointment) => {
           const detailsRes = await apiRequest(`/api/prescriptions/${appointment.id}`);
+          const prescriptionItems = detailsRes.ok
+            ? Array.isArray(detailsRes.data?.appointment?.prescription?.items)
+              ? detailsRes.data.appointment.prescription.items
+              : []
+            : [];
+
           return {
             id: appointment.id,
             startAt: appointment.startAt,
             doctorName: appointment.doctor?.fullName || 'Doctor',
             diagnosis: appointment.prescription?.diagnosis || 'No diagnosis',
-            handoffCode: detailsRes.ok ? detailsRes.data?.handoffCode || 'Open prescription' : 'Open prescription'
+            handoffCode: detailsRes.ok ? detailsRes.data?.handoffCode || 'Open prescription' : 'Open prescription',
+            medicineNames: prescriptionItems.map((entry) => String(entry?.name || '').trim()).filter(Boolean)
           };
         })
       );
@@ -2946,6 +2968,33 @@ function MedicineCabinetPage() {
     load();
   }, [load]);
 
+  const searchMedicineDetails = async (event) => {
+    event.preventDefault();
+    const query = String(medicineQuery || '').trim();
+    if (query.length < 2) {
+      setMedicineSearchError('Type at least 2 characters to search for medicine details.');
+      setMedicineMatches([]);
+      return;
+    }
+
+    setSearchingMedicines(true);
+    setMedicineSearchError('');
+
+    const res = await apiRequest(`/api/prescriptions/catalog/search?q=${encodeURIComponent(query)}&limit=10`);
+    setSearchingMedicines(false);
+
+    if (!res.ok) {
+      setMedicineSearchError(res.data?.error || 'Unable to search medicine details right now.');
+      setMedicineMatches([]);
+      return;
+    }
+
+    setMedicineMatches(Array.isArray(res.data?.results) ? res.data.results : []);
+    if (!Array.isArray(res.data?.results) || res.data.results.length === 0) {
+      setMedicineSearchError('No matching medicines found. Try another name.');
+    }
+  };
+
   if (user.role !== 'patient') {
     return <Navigate to="/dashboard" replace />;
   }
@@ -2956,6 +3005,39 @@ function MedicineCabinetPage() {
         <p className="kicker">Medicine Cabinet</p>
         <h2>Your prescriptions and handoff cards</h2>
         <p className="muted">Keep these cards ready when visiting a pharmacy or planning a follow-up.</p>
+      </section>
+
+      <section className="card medicine-search-card">
+        <h3>Search Medicine Details & Side Effects</h3>
+        <form className="row-inline wrap medicine-search-form" onSubmit={searchMedicineDetails}>
+          <input
+            value={medicineQuery}
+            onChange={(event) => setMedicineQuery(event.target.value)}
+            placeholder="Search by medicine name (e.g., Paracetamol)"
+            aria-label="Search medicine"
+          />
+          <button type="submit" disabled={searchingMedicines}>
+            {searchingMedicines ? 'Searching...' : 'Search'}
+          </button>
+        </form>
+        {medicineSearchError ? <p className="error">{medicineSearchError}</p> : null}
+        {medicineMatches.length > 0 ? (
+          <div className="medicine-search-results">
+            {medicineMatches.map((entry) => (
+              <article className="medicine-search-item" key={`${entry.name}-${entry.genericName || ''}`}>
+                <h4>{entry.name}</h4>
+                <p className="muted">Generic: {entry.genericName || 'Not specified'}</p>
+                <p>{entry.uses || 'No usage summary available.'}</p>
+                <p>
+                  <strong>Possible side effects:</strong>{' '}
+                  {Array.isArray(entry.sideEffects) && entry.sideEffects.length ? entry.sideEffects.join(', ') : 'Not listed'}
+                </p>
+                <p className="muted">Caution: {entry.caution || 'Follow your doctor instructions.'}</p>
+                {entry.inPatientHistory ? <span className="pill subtle">Seen in your prescription history</span> : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {loading ? <p className="muted">Organizing your medicine records...</p> : null}
@@ -2970,6 +3052,9 @@ function MedicineCabinetPage() {
             <p className="muted">{utcDateTime(item.startAt)}</p>
             <h3>{item.diagnosis}</h3>
             <p className="muted">Doctor: {item.doctorName}</p>
+            {item.medicineNames?.length ? (
+              <p className="muted">Medicines: {item.medicineNames.slice(0, 4).join(', ')}</p>
+            ) : null}
 
             {item.handoffCode ? (
               <div className="handoff-code-block">
@@ -2987,7 +3072,8 @@ function MedicineCabinetPage() {
                 to={buildPdfPreviewLink(
                   `/api/prescriptions/${item.id}/pdf`,
                   `Prescription ${item.id}`,
-                  `/api/prescriptions/${item.id}/pdf?download=1`
+                  `/api/prescriptions/${item.id}/pdf?download=1`,
+                  item.id
                 )}
               >
                 Preview PDF
@@ -3195,7 +3281,8 @@ function PharmacyOrdersPage() {
                     to={buildPdfPreviewLink(
                       `/api/prescriptions/${order.appointmentId}/pdf`,
                       `Prescription ${order.appointmentId}`,
-                      `/api/prescriptions/${order.appointmentId}/pdf?download=1`
+                      `/api/prescriptions/${order.appointmentId}/pdf?download=1`,
+                      order.appointmentId
                     )}
                   >
                     Prescription PDF
@@ -3512,17 +3599,168 @@ function LabTestsPage() {
 }
 
 function PdfPreviewPage() {
+  const { user } = useSession();
   const location = useLocation();
   const navigate = useNavigate();
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const [audioBusy, setAudioBusy] = useState(false);
+  const [audioMessage, setAudioMessage] = useState('');
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [narrationText, setNarrationText] = useState('');
+  const [narrationLanguageCode, setNarrationLanguageCode] = useState('');
+  const [narrationLanguageLabel, setNarrationLanguageLabel] = useState('');
+  const [narrationAppointmentId, setNarrationAppointmentId] = useState('');
 
   const rawSource = String(query.get('src') || '').trim();
   const rawDownload = String(query.get('download') || rawSource).trim();
+  const rawAppointmentId = String(query.get('appointmentId') || '').trim();
   const title = String(query.get('title') || 'PDF preview');
 
   const sourcePath = rawSource.startsWith('/') ? rawSource : '';
   const downloadPath = rawDownload.startsWith('/') ? rawDownload : sourcePath;
   const allowedSource = sourcePath.startsWith('/api/') || sourcePath.startsWith('/documents/');
+  const speechSupported = useMemo(
+    () => typeof window !== 'undefined' && Boolean(window.speechSynthesis) && Boolean(window.SpeechSynthesisUtterance),
+    []
+  );
+
+  const prescriptionAppointmentId = useMemo(() => {
+    const explicitId = extractFirstUuid(rawAppointmentId);
+    if (explicitId) return explicitId;
+
+    const match = sourcePath.match(/^\/api\/prescriptions\/([^/]+)\/pdf/i);
+    if (match?.[1]) {
+      const decoded = decodeURIComponent(match[1]);
+      const sourceId = extractFirstUuid(decoded) || decoded;
+      return sourceId;
+    }
+
+    const titleId = extractFirstUuid(title);
+    return titleId || '';
+  }, [rawAppointmentId, sourcePath, title]);
+
+  const canListenPrescription = Boolean(prescriptionAppointmentId);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const stopPrescriptionAudio = () => {
+    if (!speechSupported) return;
+    window.speechSynthesis.cancel();
+    setAudioBusy(false);
+    setIsPlayingAudio(false);
+    setAudioMessage('Audio stopped.');
+  };
+
+  const playPrescriptionAudio = async () => {
+    if (!canListenPrescription) return;
+    if (!speechSupported) {
+      setAudioMessage('Audio playback is not available in this browser.');
+      return;
+    }
+
+    setAudioBusy(true);
+    setAudioMessage('');
+
+    try {
+      let textToSpeak = stripHandoffCodeFromNarration(String(narrationText || '').trim());
+      const selectedAppLanguage = getAppSelectedLanguage(user?.language || 'English');
+      const selectedLanguageLabel = resolvePreferredLanguageName(selectedAppLanguage);
+      let languageCode = resolveSpeechLanguageCode(selectedAppLanguage);
+      let languageLabel = selectedLanguageLabel;
+
+      const shouldRefreshNarration =
+        !textToSpeak ||
+        narrationAppointmentId !== prescriptionAppointmentId ||
+        String(narrationLanguageLabel || '').trim().toLowerCase() !== selectedLanguageLabel.toLowerCase();
+
+      if (shouldRefreshNarration) {
+        const detailsRes = await apiRequest(`/api/prescriptions/${prescriptionAppointmentId}`);
+        if (!detailsRes.ok || !detailsRes.data?.appointment?.prescription) {
+          setAudioMessage('Prescription details are not available for audio right now.');
+          return;
+        }
+
+        const appointment = detailsRes.data.appointment;
+        const preferredLanguage = getAppSelectedLanguage(user?.language || appointment.patient?.language || 'English');
+        const preferredLanguageName = resolvePreferredLanguageName(preferredLanguage);
+        languageCode = resolveSpeechLanguageCode(preferredLanguage);
+        languageLabel = preferredLanguageName;
+
+        const localizedScriptText = buildPrescriptionNarrationTextLocalized({
+          language: preferredLanguageName,
+          patientName: appointment.familyMember?.fullName || appointment.patient?.fullName || '',
+          doctorName: `Dr. ${appointment.doctor?.fullName || 'your doctor'}`,
+          diagnosis: appointment.prescription?.diagnosis || '',
+          items: appointment.prescription?.items || [],
+          instructions: appointment.prescription?.instructions || '',
+          followUpAt: appointment.prescription?.followUpAt || null
+        });
+
+        textToSpeak = await ensureNarrationLanguage({
+          appointmentId: appointment.id,
+          targetLanguage: preferredLanguageName,
+          preferredText: localizedScriptText,
+          fallbackText: localizedScriptText
+        });
+
+        setNarrationText(textToSpeak);
+        setNarrationLanguageCode(languageCode);
+        setNarrationLanguageLabel(languageLabel);
+        setNarrationAppointmentId(prescriptionAppointmentId);
+      }
+
+      textToSpeak = stripHandoffCodeFromNarration(textToSpeak);
+      if (!textToSpeak) {
+        setAudioMessage('No prescription summary text is available to play.');
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+      const utterance = new window.SpeechSynthesisUtterance(textToSpeak);
+      utterance.lang = languageCode;
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+
+      const voices = await loadSpeechVoices();
+      const hasTargetLanguageVoice = hasMatchingSpeechVoice(voices, languageCode);
+      const preferredVoice = resolveSpeechVoice(voices, languageCode);
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
+
+      utterance.onstart = () => {
+        setIsPlayingAudio(true);
+        if (hasTargetLanguageVoice) {
+          setAudioMessage(`Playing in ${languageLabel || languageCode}.`);
+        } else {
+          setAudioMessage(`Playing with device default voice. ${languageLabel || languageCode} voice is not installed on this device.`);
+        }
+      };
+
+      utterance.onend = () => {
+        setIsPlayingAudio(false);
+        setAudioMessage('Audio playback finished.');
+      };
+
+      utterance.onerror = () => {
+        setIsPlayingAudio(false);
+        setAudioMessage('Unable to play prescription audio. Please try again.');
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } catch (_err) {
+      setAudioMessage('Unable to prepare prescription audio. Please try again.');
+    } finally {
+      setAudioBusy(false);
+    }
+  };
 
   if (!allowedSource) {
     return (
@@ -3542,6 +3780,11 @@ function PdfPreviewPage() {
         <div>
           <p className="kicker">In-app Preview</p>
           <h2>{title}</h2>
+          {canListenPrescription ? (
+            <p className={`pdf-preview-audio-note ${audioMessage.toLowerCase().includes('unable') ? 'error' : 'muted'}`}>
+              {audioMessage || `Tap listen to hear this prescription in ${narrationLanguageLabel || user?.language || 'your preferred language'}.`}
+            </p>
+          ) : null}
         </div>
         <div className="row-inline wrap">
           <button type="button" className="btn subtle" onClick={() => navigate(-1)}>
@@ -3553,6 +3796,21 @@ function PdfPreviewPage() {
           <a className="btn" href={downloadPath} target="_blank" rel="noreferrer">
             Download
           </a>
+          {canListenPrescription ? (
+            <button
+              type="button"
+              className="btn subtle"
+              onClick={playPrescriptionAudio}
+              disabled={audioBusy || isPlayingAudio}
+            >
+              {audioBusy ? 'Preparing audio...' : isPlayingAudio ? 'Playing...' : 'Listen Prescription'}
+            </button>
+          ) : null}
+          {canListenPrescription ? (
+            <button type="button" className="btn subtle" onClick={stopPrescriptionAudio} disabled={!isPlayingAudio}>
+              Stop Audio
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -4128,7 +4386,8 @@ function AppointmentsPage() {
                     to={buildPdfPreviewLink(
                       `/api/prescriptions/${item.id}/pdf`,
                       `Prescription ${item.id}`,
-                      `/api/prescriptions/${item.id}/pdf?download=1`
+                      `/api/prescriptions/${item.id}/pdf?download=1`,
+                      item.id
                     )}
                   >
                     View Prescription
@@ -5398,7 +5657,12 @@ function PrescriptionPage() {
   const [aiBusy, setAiBusy] = useState(false);
   const [simplifiedPrescription, setSimplifiedPrescription] = useState('');
   const [smartReminder, setSmartReminder] = useState('');
-  const [rows, setRows] = useState([{ medicationName: '', dosage: '', frequency: '', duration: '' }]);
+  const [audioBusy, setAudioBusy] = useState(false);
+  const [audioMessage, setAudioMessage] = useState('');
+  const [narrationText, setNarrationText] = useState('');
+  const [narrationLanguage, setNarrationLanguage] = useState('');
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [rows, setRows] = useState([{ medicationName: '', dosage: '', frequency: '', duration: '', sideEffects: '' }]);
   const [form, setForm] = useState({
     diagnosis: '',
     instructions: '',
@@ -5407,6 +5671,10 @@ function PrescriptionPage() {
     pharmacyContact: '',
     notes: ''
   });
+  const speechSupported = useMemo(
+    () => typeof window !== 'undefined' && Boolean(window.speechSynthesis) && Boolean(window.SpeechSynthesisUtterance),
+    []
+  );
 
   useEffect(() => {
     const prescription = data?.appointment?.prescription;
@@ -5417,9 +5685,10 @@ function PrescriptionPage() {
           medicationName: item.name || '',
           dosage: item.dosage || '',
           frequency: item.frequency || '',
-          duration: item.duration || ''
+          duration: item.duration || '',
+          sideEffects: formatSideEffectsText(item.sideEffects)
         }))
-      : [{ medicationName: '', dosage: '', frequency: '', duration: '' }];
+      : [{ medicationName: '', dosage: '', frequency: '', duration: '', sideEffects: '' }];
 
     setRows(rowItems);
     setForm({
@@ -5440,6 +5709,21 @@ function PrescriptionPage() {
     });
   }, [data]);
 
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    setNarrationText('');
+    setNarrationLanguage('');
+    setAudioMessage('');
+    setIsPlayingAudio(false);
+  }, [appointmentId]);
+
   const isDoctorOwner =
     user.role === 'doctor' && data?.appointment && user.id === data.appointment.doctorId;
 
@@ -5452,7 +5736,8 @@ function PrescriptionPage() {
       medicationName: rows.map((row) => row.medicationName),
       dosage: rows.map((row) => row.dosage),
       frequency: rows.map((row) => row.frequency),
-      duration: rows.map((row) => row.duration)
+      duration: rows.map((row) => row.duration),
+      sideEffects: rows.map((row) => row.sideEffects)
     };
 
     const res = await apiRequest(`/api/prescriptions/${appointmentId}`, {
@@ -5484,25 +5769,40 @@ function PrescriptionPage() {
   };
 
   const generatePatientFriendlyText = async () => {
-    if (!data?.appointment?.id) return;
+    if (!data?.appointment?.id || !data?.appointment?.prescription) return;
     setAiBusy(true);
     setMessage('');
 
-    const res = await apiRequest('/api/ai/prescription-simplify', {
-      method: 'POST',
-      body: {
+    try {
+      const preferredLanguage = getAppSelectedLanguage(user.language || data.appointment.patient?.language || 'English');
+      const preferredLanguageName = resolvePreferredLanguageName(preferredLanguage);
+
+      const localizedScriptText = buildPrescriptionNarrationTextLocalized({
+        language: preferredLanguageName,
+        patientName: data.appointment.familyMember?.fullName || data.appointment.patient?.fullName || '',
+        doctorName: `Dr. ${data.appointment.doctor?.fullName || 'your doctor'}`,
+        diagnosis: data.appointment.prescription?.diagnosis || '',
+        items: data.appointment.prescription?.items || [],
+        instructions: data.appointment.prescription?.instructions || '',
+        followUpAt: data.appointment.prescription?.followUpAt || null
+      });
+
+      const localizedText = await ensureNarrationLanguage({
         appointmentId: data.appointment.id,
-        preferredLanguage: data.appointment.patient?.language || 'en-IN'
-      }
-    });
+        targetLanguage: preferredLanguageName,
+        preferredText: localizedScriptText,
+        fallbackText: localizedScriptText
+      });
 
-    setAiBusy(false);
-    if (!res.ok) {
-      setMessage(res.data?.error || 'Could not generate simplified prescription text.');
-      return;
+      const plainLanguageText = localizedText || 'No simplified text returned.';
+      setSimplifiedPrescription(plainLanguageText);
+      setNarrationText(stripHandoffCodeFromNarration(plainLanguageText));
+      setNarrationLanguage(preferredLanguageName);
+    } catch (_err) {
+      setMessage('Unable to generate prescription summary right now.');
+    } finally {
+      setAiBusy(false);
     }
-
-    setSimplifiedPrescription(res.data?.result?.plainLanguage || 'No simplified text returned.');
   };
 
   const generateReminderMessage = async () => {
@@ -5528,6 +5828,95 @@ function PrescriptionPage() {
     setSmartReminder(res.data?.result?.message || 'No reminder text returned.');
   };
 
+  const stopPrescriptionAudio = () => {
+    if (!speechSupported) return;
+    window.speechSynthesis.cancel();
+    setAudioBusy(false);
+    setIsPlayingAudio(false);
+    setAudioMessage('Audio stopped.');
+  };
+
+  const playPrescriptionAudio = async () => {
+    if (!speechSupported || !data?.appointment?.prescription) {
+      setAudioMessage('Audio playback is not available in this browser.');
+      return;
+    }
+
+    setAudioMessage('');
+    const preferredLanguage = getAppSelectedLanguage(user.language || data.appointment.patient?.language || 'English');
+    const preferredLanguageName = resolvePreferredLanguageName(preferredLanguage);
+    const languageCode = resolveSpeechLanguageCode(preferredLanguage);
+    const localizedFallbackText = buildPrescriptionNarrationTextLocalized({
+      language: preferredLanguageName,
+      patientName: data.appointment.familyMember?.fullName || data.appointment.patient?.fullName || '',
+      doctorName: `Dr. ${data.appointment.doctor?.fullName || 'your doctor'}`,
+      diagnosis: data.appointment.prescription?.diagnosis || '',
+      items: data.appointment.prescription?.items || [],
+      instructions: data.appointment.prescription?.instructions || '',
+      followUpAt: data.appointment.prescription?.followUpAt || null
+    });
+
+    let textToSpeak =
+      String(narrationLanguage || '').trim().toLowerCase() === String(preferredLanguageName).trim().toLowerCase()
+        ? stripHandoffCodeFromNarration(String(narrationText || simplifiedPrescription || '').trim())
+        : '';
+
+    if (!textToSpeak) {
+      textToSpeak = localizedFallbackText;
+    }
+
+    textToSpeak = await ensureNarrationLanguage({
+      appointmentId: data.appointment.id,
+      targetLanguage: preferredLanguageName,
+      preferredText: textToSpeak,
+      fallbackText: localizedFallbackText
+    });
+
+    if (textToSpeak) {
+      setNarrationText(textToSpeak);
+      setNarrationLanguage(preferredLanguageName);
+      setSimplifiedPrescription((prev) => prev || textToSpeak);
+    }
+
+    if (!textToSpeak) {
+      setAudioMessage('No prescription details are available to read.');
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new window.SpeechSynthesisUtterance(textToSpeak);
+    utterance.lang = languageCode;
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    const voices = await loadSpeechVoices();
+    const hasTargetLanguageVoice = hasMatchingSpeechVoice(voices, languageCode);
+    const preferredVoice = resolveSpeechVoice(voices, languageCode);
+    if (preferredVoice) utterance.voice = preferredVoice;
+
+    utterance.onstart = () => {
+      setIsPlayingAudio(true);
+      if (hasTargetLanguageVoice) {
+        setAudioMessage(`Playing prescription audio in ${preferredLanguageName} (${languageCode}).`);
+      } else {
+        setAudioMessage(`Playing with device default voice. ${preferredLanguageName} voice is not installed on this device.`);
+      }
+    };
+
+    utterance.onend = () => {
+      setIsPlayingAudio(false);
+      setAudioMessage('Audio playback finished.');
+    };
+
+    utterance.onerror = () => {
+      setIsPlayingAudio(false);
+      setAudioMessage('Unable to play prescription audio. Please try again.');
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
   if (loading) return <p className="muted">Loading prescription...</p>;
   if (error) return <p className="error">{error}</p>;
   if (!data?.appointment) return <p className="error">Prescription not found.</p>;
@@ -5539,6 +5928,10 @@ function PrescriptionPage() {
     : appointment.patient.fullName;
   const doctorName = `Dr. ${appointment.doctor.fullName}`;
   const instructionsText = prescription?.instructions || 'No specific dietary instructions provided for this diagnosis.';
+  const preferredNarrationLanguage = resolvePreferredLanguageName(
+    getAppSelectedLanguage(user.language || appointment.patient?.language || 'English')
+  );
+  const preferredSpeechCode = resolveSpeechLanguageCode(preferredNarrationLanguage);
 
   if (user.role === 'patient') {
     if (!prescription) {
@@ -5645,6 +6038,10 @@ function PrescriptionPage() {
                       <small>Duration</small>
                       <strong>{item.duration || 'N/A'}</strong>
                     </div>
+                    <div>
+                      <small>Possible Side Effects</small>
+                      <strong>{formatSideEffectsText(item.sideEffects) || 'N/A'}</strong>
+                    </div>
                   </div>
                 </div>
               </article>
@@ -5661,6 +6058,26 @@ function PrescriptionPage() {
               Doctor's Instructions
             </h2>
             <p>{instructionsText}</p>
+          </section>
+
+          <section className="patient-prescription-audio">
+            <h2>
+              <span className="material-symbols-outlined" aria-hidden="true">volume_up</span>
+              Listen in Your Language
+            </h2>
+            <p>
+              Preferred language: <strong>{preferredNarrationLanguage}</strong> ({preferredSpeechCode})
+            </p>
+            <div className="row-inline wrap">
+              <button type="button" onClick={playPrescriptionAudio} disabled={audioBusy || isPlayingAudio}>
+                {audioBusy ? 'Preparing audio...' : isPlayingAudio ? 'Playing...' : 'Listen Prescription'}
+              </button>
+              <button type="button" className="ghost" onClick={stopPrescriptionAudio} disabled={!isPlayingAudio}>
+                Stop Audio
+              </button>
+            </div>
+            {!speechSupported ? <p className="muted">Audio playback is not supported in this browser.</p> : null}
+            {audioMessage ? <p className="muted">{audioMessage}</p> : null}
           </section>
 
           <section className="patient-prescription-instructions">
@@ -5685,7 +6102,8 @@ function PrescriptionPage() {
               to={buildPdfPreviewLink(
                 `/api/prescriptions/${appointmentId}/pdf`,
                 `Prescription ${appointmentId}`,
-                `/api/prescriptions/${appointmentId}/pdf?download=1`
+                `/api/prescriptions/${appointmentId}/pdf?download=1`,
+                appointmentId
               )}
             >
               <span className="material-symbols-outlined" aria-hidden="true">download</span>
@@ -5740,7 +6158,8 @@ function PrescriptionPage() {
           to={buildPdfPreviewLink(
             `/api/prescriptions/${appointmentId}/pdf`,
             `Prescription ${appointmentId}`,
-            `/api/prescriptions/${appointmentId}/pdf?download=1`
+            `/api/prescriptions/${appointmentId}/pdf?download=1`,
+            appointmentId
           )}
         >
           Preview PDF
@@ -5761,6 +6180,9 @@ function PrescriptionPage() {
                 </strong>
                 <p className="muted">
                   {item.dosage || 'N/A'} | {item.frequency || 'N/A'} | {item.duration || 'N/A'}
+                </p>
+                <p className="muted">
+                  Side effects: {formatSideEffectsText(item.sideEffects) || 'N/A'}
                 </p>
               </div>
             </article>
@@ -5791,7 +6213,7 @@ function PrescriptionPage() {
                   type="button"
                   className="ghost"
                   onClick={() =>
-                    setRows((prev) => [...prev, { medicationName: '', dosage: '', frequency: '', duration: '' }])
+                    setRows((prev) => [...prev, { medicationName: '', dosage: '', frequency: '', duration: '', sideEffects: '' }])
                   }
                 >
                   Add medicine
@@ -5799,7 +6221,7 @@ function PrescriptionPage() {
               </div>
 
               {rows.map((row, idx) => (
-                <div className="grid four" key={`row-${idx}`}>
+                <div className="grid five" key={`row-${idx}`}>
                   <label>
                     Name
                     <input
@@ -5849,6 +6271,20 @@ function PrescriptionPage() {
                           )
                         )
                       }
+                    />
+                  </label>
+                  <label>
+                    Possible side effects
+                    <input
+                      value={row.sideEffects}
+                      onChange={(e) =>
+                        setRows((prev) =>
+                          prev.map((entry, entryIdx) =>
+                            entryIdx === idx ? { ...entry, sideEffects: e.target.value } : entry
+                          )
+                        )
+                      }
+                      placeholder="e.g., nausea, dry mouth"
                     />
                   </label>
                 </div>
@@ -5924,6 +6360,7 @@ function AICopilotPage() {
   const [referralTriedTreatment, setReferralTriedTreatment] = useState('');
   const [asyncThreadSummary, setAsyncThreadSummary] = useState('');
   const [asyncThreadMessage, setAsyncThreadMessage] = useState('');
+  const [activeFeature, setActiveFeature] = useState('');
 
   const [busyMap, setBusyMap] = useState({});
   const [errorMap, setErrorMap] = useState({});
@@ -5945,6 +6382,40 @@ function AICopilotPage() {
     () => appointments.find((row) => row.id === appointmentId) || null,
     [appointments, appointmentId]
   );
+
+  const aiFeatureButtons = useMemo(
+    () => [
+      {
+        key: 'draftNote',
+        title: 'Doctor Note Drafting',
+        description: 'Generate structured SOAP draft notes.',
+        icon: 'description',
+        restricted: !(user.role === 'doctor' || user.role === 'admin')
+      },
+      {
+        key: 'simplifyPrescription',
+        title: 'Prescription Simplifier',
+        description: 'Convert prescriptions into patient-friendly language.',
+        icon: 'medication'
+      },
+      {
+        key: 'referralSummary',
+        title: 'Referral Summary',
+        description: 'Create specialist referral draft and checklist.',
+        icon: 'summarize',
+        restricted: !(user.role === 'doctor' || user.role === 'admin')
+      },
+      {
+        key: 'asyncReply',
+        title: 'Async Reply Suggestion',
+        description: 'Draft a safe response to patient follow-ups.',
+        icon: 'quickreply'
+      }
+    ],
+    [user.role]
+  );
+
+  const activeFeatureConfig = aiFeatureButtons.find((item) => item.key === activeFeature) || null;
 
   useEffect(() => {
     try {
@@ -6197,6 +6668,7 @@ function AICopilotPage() {
         </div>
       </header>
 
+      {activeFeature ? (
       <section className="ai-safety-banner">
         <span className="material-symbols-outlined" aria-hidden="true">gavel</span>
         <div>
@@ -6204,9 +6676,11 @@ function AICopilotPage() {
           <p>Every output is a draft. Human review is mandatory before any diagnosis, treatment, or patient communication.</p>
         </div>
       </section>
+      ) : null}
 
-      {contextError ? <p className="error">{contextError}</p> : null}
+      {activeFeature && contextError ? <p className="error">{contextError}</p> : null}
 
+      {activeFeature ? (
       <div className="ai-status-grid">
       <article className="compass-card ai-panel">
         <h3>Offline draft queue</h3>
@@ -6237,7 +6711,9 @@ function AICopilotPage() {
         )}
       </article>
       </div>
+      ) : null}
 
+      {activeFeature ? (
       <article className="compass-card ai-context-panel">
         <h3>Shared Context Configuration</h3>
         <div className="compass-inline-grid">
@@ -6278,9 +6754,40 @@ function AICopilotPage() {
           </label>
         </div>
       </article>
+      ) : null}
 
-      <h3 className="ai-toolbox-title">AI Toolbox</h3>
+      <article className="compass-card ai-feature-launcher">
+        <h3>AI Help Features</h3>
+        <p className="muted">Select one feature button to open it. The full page stays hidden until you choose.</p>
+        <div className="ai-feature-button-grid">
+          {aiFeatureButtons.map((feature) => (
+            <button
+              key={feature.key}
+              type="button"
+              className={`ai-feature-btn ${activeFeature === feature.key ? 'active' : ''}`}
+              onClick={() => setActiveFeature(feature.key)}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">{feature.icon}</span>
+              <span>
+                <strong>{feature.title}</strong>
+                <small>{feature.restricted ? 'Doctor/Admin only' : feature.description}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+        {activeFeature ? (
+          <button type="button" className="compass-action-btn subtle" onClick={() => setActiveFeature('')}>
+            Back to feature buttons
+          </button>
+        ) : null}
+      </article>
+
+      {activeFeature ? <h3 className="ai-toolbox-title">{activeFeatureConfig?.title || 'AI Toolbox'}</h3> : null}
+      {!activeFeature ? <p className="muted">Choose a feature above to start.</p> : null}
+
+      {activeFeature ? (
       <div className="ai-toolbox-grid">
+        {activeFeature === 'draftNote' ? (
         <article className="compass-card ai-tool-card">
           <h3>Doctor Note Drafting</h3>
           <form
@@ -6323,7 +6830,9 @@ function AICopilotPage() {
           </form>
           {renderResult('draftNote')}
         </article>
+        ) : null}
 
+      {activeFeature === 'simplifyPrescription' ? (
       <article className="compass-card ai-tool-card">
         <h3>AI Prescription Simplifier</h3>
         <form
@@ -6352,7 +6861,9 @@ function AICopilotPage() {
         </form>
         {renderResult('simplifyPrescription')}
       </article>
+      ) : null}
 
+      {activeFeature === 'referralSummary' ? (
       <article className="compass-card ai-tool-card">
         <h3>Consultation Summary for Referral</h3>
         <form
@@ -6427,7 +6938,9 @@ function AICopilotPage() {
         </form>
         {renderResult('referralSummary')}
       </article>
+      ) : null}
 
+      {activeFeature === 'asyncReply' ? (
       <article className="compass-card ai-tool-card">
         <h3>Doctor Response Suggester (Async)</h3>
         <form
@@ -6467,19 +6980,77 @@ function AICopilotPage() {
         </form>
         {renderResult('asyncReply')}
       </article>
+      ) : null}
       </div>
+      ) : null}
     </section>
   );
 }
 
 function ProfilePage() {
+  const navigate = useNavigate();
+  const { refreshSession } = useSession();
+  const { isOnline, networkType, isDataSaver, setIsDataSaver } = useRuralSupport();
   const { data, setData, error, loading } = useApiPage('/api/users/me');
   const [message, setMessage] = useState('');
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [shareProfileOpen, setShareProfileOpen] = useState(false);
   const [abhaForm, setAbhaForm] = useState({ abhaId: '', abhaAddress: '' });
   const [abhaMessage, setAbhaMessage] = useState('');
   const [abhaBusy, setAbhaBusy] = useState(false);
+  const [shareProfileBusy, setShareProfileBusy] = useState(false);
+  const [shareProfileData, setShareProfileData] = useState(null);
+  const [shareProfileMessage, setShareProfileMessage] = useState('');
+  const [profileQrImage, setProfileQrImage] = useState('');
+  const [profileQrError, setProfileQrError] = useState(false);
 
   const user = data?.user || null;
+
+  const profileShareUrl = useMemo(() => {
+    const raw = String(shareProfileData?.qrUrl || '').trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}${raw.startsWith('/') ? '' : '/'}${raw}`;
+  }, [shareProfileData]);
+
+  const healthAction = user?.role === 'patient'
+    ? { to: '/patients/workspace', label: 'Health Workspace', icon: 'monitor_heart' }
+    : user?.role === 'doctor'
+      ? { to: '/doctors/me/analytics', label: 'Health Analytics', icon: 'query_stats' }
+      : user?.role === 'help_worker'
+        ? { to: '/support/consents', label: 'Care Support', icon: 'volunteer_activism' }
+        : { to: '/dashboard', label: 'Health Dashboard', icon: 'dashboard' };
+
+  useEffect(() => {
+    let disposed = false;
+
+    if (!profileShareUrl) {
+      setProfileQrImage('');
+      setProfileQrError(false);
+      return undefined;
+    }
+
+    QRCode.toDataURL(profileShareUrl, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: 'M'
+    })
+      .then((dataUrl) => {
+        if (disposed) return;
+        setProfileQrImage(dataUrl);
+        setProfileQrError(false);
+      })
+      .catch(() => {
+        if (disposed) return;
+        setProfileQrImage('');
+        setProfileQrError(true);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [profileShareUrl]);
 
   useEffect(() => {
     if (!user || user.role !== 'patient') return;
@@ -6543,6 +7114,73 @@ function ProfilePage() {
     setAbhaMessage('ABHA profile link saved.');
   };
 
+  const createProfileShareQr = async () => {
+    if (user.role !== 'patient') return;
+
+    setShareProfileBusy(true);
+    setShareProfileMessage('');
+
+    const res = await apiRequest('/api/innovations/patients/qr-token', {
+      method: 'POST',
+      body: {
+        patientId: user.id,
+        label: 'Profile share',
+        expiresInHours: 12
+      }
+    });
+
+    setShareProfileBusy(false);
+
+    if (!res.ok) {
+      setShareProfileMessage(res.data?.error || res.data?.message || 'Could not generate profile share QR.');
+      return;
+    }
+
+    setShareProfileData(res.data || null);
+    setShareProfileMessage('Profile QR generated. It will expire in 12 hours.');
+  };
+
+  const copyProfileShareLink = async () => {
+    if (!profileShareUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(profileShareUrl);
+      setShareProfileMessage('Profile link copied.');
+    } catch (_error) {
+      setShareProfileMessage('Copy failed. Please copy the link manually.');
+    }
+  };
+
+  const shareProfileLink = async () => {
+    if (!profileShareUrl) return;
+
+    if (!navigator.share) {
+      await copyProfileShareLink();
+      return;
+    }
+
+    try {
+      await navigator.share({
+        title: `${user.fullName} profile`,
+        text: `Shared profile for ${user.fullName}`,
+        url: profileShareUrl
+      });
+      setShareProfileMessage('Profile link shared.');
+    } catch (_error) {}
+  };
+
+  const shareProfileOnWhatsApp = () => {
+    if (!profileShareUrl) return;
+    const shareText = `Shared health profile: ${profileShareUrl}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const onLogout = async () => {
+    await apiRequest('/api/auth/logout', { method: 'POST' });
+    await refreshSession();
+    navigate('/auth/login', { replace: true });
+  };
+
   return (
     <section className="journey-profile-shell">
       <header className="journey-profile-hero">
@@ -6554,6 +7192,153 @@ function ProfilePage() {
       </header>
 
       {message ? <p className={message.toLowerCase().includes('could not') ? 'error' : 'success'}>{message}</p> : null}
+
+      <section className="journey-form-card profile-action-center">
+        <div className="journey-form-head">
+          <span className="material-symbols-outlined" aria-hidden="true">tune</span>
+          <h3>Profile Quick Actions</h3>
+        </div>
+
+        <p className={`profile-network-status ${isOnline ? 'online' : 'offline'}`}>
+          <span className="material-symbols-outlined" aria-hidden="true">
+            {isOnline ? 'network_wifi' : 'wifi_off'}
+          </span>
+          <span>{isOnline ? `Network: ${networkType}` : 'Offline mode enabled'}</span>
+        </p>
+
+        <div className="profile-action-grid">
+          <Link className="profile-menu-item sanctuary-profile-item" to="/profile">
+            <span className="sanctuary-profile-item-icon" aria-hidden="true">
+              <span className="material-symbols-outlined">person</span>
+            </span>
+            <span>My Profile</span>
+          </Link>
+
+          <Link className="profile-menu-item sanctuary-profile-item" to={healthAction.to}>
+            <span className="sanctuary-profile-item-icon" aria-hidden="true">
+              <span className="material-symbols-outlined">{healthAction.icon}</span>
+            </span>
+            <span>{healthAction.label}</span>
+          </Link>
+
+          {user.role === 'patient' ? (
+            <Link className="profile-menu-item sanctuary-profile-item" to="/medicines">
+              <span className="sanctuary-profile-item-icon" aria-hidden="true">
+                <span className="material-symbols-outlined">pill</span>
+              </span>
+              <span>My Medicines</span>
+            </Link>
+          ) : null}
+
+          <Link className="profile-menu-item sanctuary-profile-item" to="/pharmacy/orders">
+            <span className="sanctuary-profile-item-icon" aria-hidden="true">
+              <span className="material-symbols-outlined">local_pharmacy</span>
+            </span>
+            <span>Pharmacy Orders</span>
+          </Link>
+
+          <Link className="profile-menu-item sanctuary-profile-item" to="/labs/tests">
+            <span className="sanctuary-profile-item-icon" aria-hidden="true">
+              <span className="material-symbols-outlined">biotech</span>
+            </span>
+            <span>Lab Tests</span>
+          </Link>
+        </div>
+
+        <div className="profile-support-block">
+          <button className="profile-menu-item sanctuary-profile-item profile-inline-toggle" type="button" onClick={() => setIsDataSaver((prev) => !prev)}>
+            <span className="sanctuary-profile-item-icon" aria-hidden="true">
+              <span className="material-symbols-outlined">{isDataSaver ? 'speed_0_5x' : 'speed'}</span>
+            </span>
+            <span>{isDataSaver ? 'Data Saver ON' : 'Data Saver OFF'}</span>
+          </button>
+
+          <button
+            className="profile-menu-item sanctuary-profile-item profile-language-trigger"
+            type="button"
+            aria-expanded={languageOpen}
+            aria-controls="profile-language-picker"
+            onClick={() => {
+              setLanguageOpen((prev) => !prev);
+              setShareProfileOpen(false);
+            }}
+          >
+            <span className="sanctuary-profile-item-icon" aria-hidden="true">
+              <span className="material-symbols-outlined">translate</span>
+            </span>
+            <span>Language</span>
+            <span className="material-symbols-outlined profile-language-caret" aria-hidden="true">
+              {languageOpen ? 'expand_less' : 'expand_more'}
+            </span>
+          </button>
+
+          <div id="profile-language-picker" className={`profile-language-block ${languageOpen ? 'open' : ''}`}>
+            <p className="profile-language-label">Translate app content</p>
+            <TranslationService variant="inline" />
+          </div>
+
+          {user.role === 'patient' ? (
+            <>
+              <button
+                className="profile-menu-item sanctuary-profile-item profile-qr-trigger"
+                type="button"
+                aria-expanded={shareProfileOpen}
+                aria-controls="profile-share-picker"
+                onClick={() => {
+                  setShareProfileOpen((prev) => !prev);
+                  setLanguageOpen(false);
+                }}
+              >
+                <span className="sanctuary-profile-item-icon" aria-hidden="true">
+                  <span className="material-symbols-outlined">qr_code_2</span>
+                </span>
+                <span>Share Profile QR</span>
+                <span className="material-symbols-outlined profile-language-caret" aria-hidden="true">
+                  {shareProfileOpen ? 'expand_less' : 'expand_more'}
+                </span>
+              </button>
+
+              <div id="profile-share-picker" className={`profile-share-block ${shareProfileOpen ? 'open' : ''}`}>
+                <p className="profile-share-note">Token validity: 12 hours</p>
+
+                {profileShareUrl ? (
+                  <div className="profile-share-preview">
+                    {profileQrImage ? <img src={profileQrImage} alt="Profile share QR code" loading="lazy" /> : null}
+                    {profileQrError ? <p className="profile-share-status">QR preview unavailable on this device. Use the link below.</p> : null}
+                    <a href={profileShareUrl} target="_blank" rel="noreferrer">
+                      {profileShareUrl}
+                    </a>
+                  </div>
+                ) : null}
+
+                <div className="profile-share-actions" role="group" aria-label="Profile share actions">
+                  <button type="button" onClick={createProfileShareQr} disabled={shareProfileBusy}>
+                    {shareProfileBusy ? 'Generating...' : profileShareUrl ? 'Regenerate QR' : 'Generate QR'}
+                  </button>
+                  <button type="button" onClick={copyProfileShareLink} disabled={!profileShareUrl}>
+                    Copy Link
+                  </button>
+                  <button type="button" onClick={shareProfileLink} disabled={!profileShareUrl}>
+                    Share
+                  </button>
+                  <button type="button" onClick={shareProfileOnWhatsApp} disabled={!profileShareUrl}>
+                    WhatsApp
+                  </button>
+                </div>
+
+                {shareProfileMessage ? <p className="profile-share-status">{shareProfileMessage}</p> : null}
+              </div>
+            </>
+          ) : null}
+
+          <button className="profile-menu-item danger sanctuary-profile-item" type="button" onClick={onLogout}>
+            <span className="sanctuary-profile-item-icon danger" aria-hidden="true">
+              <span className="material-symbols-outlined">logout</span>
+            </span>
+            <span>Logout</span>
+          </button>
+        </div>
+      </section>
 
       <form className="journey-profile-form" onSubmit={save}>
         <section className="journey-form-card">
@@ -6714,6 +7499,12 @@ function PatientHealthPage() {
   return (
     <section className="card">
       <h2>My health profile</h2>
+      <p className="muted">Need medicine information quickly?</p>
+      <div className="row-inline wrap">
+        <Link className="btn subtle" to="/patients/workspace#medicine-search">
+          Search Any Medicine
+        </Link>
+      </div>
       {message ? <p className={message.toLowerCase().includes('could not') ? 'error' : 'success'}>{message}</p> : null}
       <form className="stack" onSubmit={save}>
         <label>
@@ -6733,6 +7524,12 @@ function PatientHealthPage() {
 function PatientWorkspacePage() {
   const { data, error, loading, reload } = useApiPage('/api/patients/workspace');
   const [feedback, setFeedback] = useState('');
+  const [medicineSearchOpen, setMedicineSearchOpen] = useState(false);
+  const [medicineQuery, setMedicineQuery] = useState('');
+  const [medicineSearchBusy, setMedicineSearchBusy] = useState(false);
+  const [medicineSearchError, setMedicineSearchError] = useState('');
+  const [medicineResults, setMedicineResults] = useState([]);
+  const [topMedicineResults, setTopMedicineResults] = useState([]);
 
   if (loading) return <p className="muted">Loading family and records...</p>;
   if (error) return <p className="error">{error}</p>;
@@ -6780,15 +7577,120 @@ function PatientWorkspacePage() {
     window.print();
   };
 
+  const loadTopMedicines = async () => {
+    setMedicineSearchBusy(true);
+    setMedicineSearchError('');
+
+    const res = await apiRequest('/api/medicines/top?limit=20');
+    setMedicineSearchBusy(false);
+
+    if (!res.ok) {
+      setMedicineSearchError(res.data?.error || 'Could not load top medicines right now.');
+      return;
+    }
+
+    setTopMedicineResults(Array.isArray(res.data?.results) ? res.data.results : []);
+    setMedicineResults([]);
+  };
+
+  const searchMedicines = async (event) => {
+    event.preventDefault();
+    const query = String(medicineQuery || '').trim();
+
+    if (query.length < 2) {
+      setMedicineSearchError('Enter at least 2 characters to search medicines.');
+      setMedicineResults([]);
+      return;
+    }
+
+    setMedicineSearchBusy(true);
+    setMedicineSearchError('');
+
+    const res = await apiRequest(`/api/medicines/search?q=${encodeURIComponent(query)}&limit=20`);
+    setMedicineSearchBusy(false);
+
+    if (!res.ok) {
+      setMedicineSearchError(res.data?.error || 'Could not search medicines right now.');
+      setMedicineResults([]);
+      return;
+    }
+
+    const results = Array.isArray(res.data?.results) ? res.data.results : [];
+    setMedicineResults(results);
+    if (!results.length) {
+      setMedicineSearchError('No medicines matched your search. Try a different spelling.');
+    }
+  };
+
+  const toggleMedicineSearch = async () => {
+    const nextOpen = !medicineSearchOpen;
+    setMedicineSearchOpen(nextOpen);
+    if (nextOpen && topMedicineResults.length === 0) {
+      await loadTopMedicines();
+    }
+  };
+
   const latestCompleted = (data.completedAppointments || [])[0] || null;
+  const shownMedicines = medicineResults.length ? medicineResults : topMedicineResults;
 
   return (
     <>
       <section className="journey-hero">
         <h2 className="journey-title">Patient Workspace</h2>
         <p className="journey-sub">Manage your personal profile, family members, and health history in your digital sanctuary.</p>
+        <div className="row-inline wrap">
+          <button type="button" className="journey-cta secondary" onClick={toggleMedicineSearch}>
+            {medicineSearchOpen ? 'Hide Medicine Search' : 'Search Any Medicine'}
+          </button>
+        </div>
         {feedback ? <p className="journey-status-note">{feedback}</p> : null}
       </section>
+
+      {medicineSearchOpen ? (
+        <section className="card medicine-search-card" id="medicine-search">
+          <p className="kicker">Health Tool</p>
+          <h3>Search Any Medicine (India Top 100)</h3>
+          <p className="muted">
+            Search medicine names to view common uses and potential side effects. This is educational guidance and does not replace your doctor advice.
+          </p>
+          <form className="row-inline wrap medicine-search-form" onSubmit={searchMedicines}>
+            <input
+              value={medicineQuery}
+              onChange={(event) => setMedicineQuery(event.target.value)}
+              placeholder="Type medicine name (e.g., Metformin)"
+              aria-label="Search any medicine"
+            />
+            <button type="submit" className="journey-cta subtle" disabled={medicineSearchBusy}>
+              {medicineSearchBusy ? 'Searching...' : 'Search'}
+            </button>
+            <button type="button" className="journey-cta subtle" onClick={loadTopMedicines} disabled={medicineSearchBusy}>
+              Show Top Medicines
+            </button>
+          </form>
+
+          {medicineSearchError ? <p className="error">{medicineSearchError}</p> : null}
+
+          {shownMedicines.length ? (
+            <div className="medicine-search-results">
+              {shownMedicines.map((medicine) => (
+                <article className="medicine-search-item" key={`${medicine.id}-${medicine.name}`}>
+                  <h4>{medicine.name}</h4>
+                  <p className="muted">Generic: {medicine.genericName || 'Not specified'}</p>
+                  <p>{medicine.uses || 'No usage summary available.'}</p>
+                  <p>
+                    <strong>Potential side effects:</strong>{' '}
+                    {Array.isArray(medicine.sideEffects) && medicine.sideEffects.length
+                      ? medicine.sideEffects.join(', ')
+                      : 'Not listed'}
+                  </p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">Tap "Show Top Medicines" to browse or search by name above.</p>
+          )}
+        </section>
+      ) : null}
 
       <section className="card print-health-card">
         <p className="kicker">Printable summary</p>
@@ -6956,7 +7858,8 @@ function PatientWorkspacePage() {
                     to={buildPdfPreviewLink(
                       `/api/prescriptions/${appointment.id}/pdf`,
                       `Prescription ${appointment.id}`,
-                      `/api/prescriptions/${appointment.id}/pdf?download=1`
+                      `/api/prescriptions/${appointment.id}/pdf?download=1`,
+                      appointment.id
                     )}
                   >
                     Preview PDF

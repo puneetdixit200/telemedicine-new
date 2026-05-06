@@ -1,62 +1,153 @@
-# Production Readiness Checklist
+﻿# Production Readiness Checklist
 
-## Critical blockers
+Use this checklist before every production release.
 
-- Secret rotation:
-  - Local `.env` Azure storage connection string has been redacted.
-  - Rotate the leaked Azure Storage key in Azure Portal immediately.
-- Node version pinning:
-  - `package.json` includes `engines.node`.
-- Build + startup automation:
-  - `npm start` now runs `prestart` automation in production.
-  - `startup.sh` is available for Azure startup command.
-- Startup command and migrations:
-  - Azure workflow deploy step now sets startup command to `bash startup.sh`.
-  - Startup script runs Prisma migrate deploy.
-- WebSockets:
-  - `web.config` enables WebSockets for Windows App Service.
-  - Deploy workflow includes optional Azure CLI step to enforce WebSockets on App Service.
-- APP_BASE_URL wildcard risk:
-  - Socket.IO CORS no longer falls back to `*` in production.
-  - Production now requires explicit `APP_BASE_URL` origin allowlist.
+## 1. Release Gate Summary
 
-## Important fixes
+A release is production-ready only if all sections below are green:
+- Security and secrets
+- Infrastructure and configuration
+- Data and migrations
+- Build and tests
+- Runtime behavior
+- Observability and operations
+- Rollback preparedness
 
-- Cookie secure behavior:
-  - Auth cookie `secure` already follows `NODE_ENV === 'production'`.
-- CI/CD:
-  - Deploy workflow exists and includes test/build/migrate/deploy.
-- Ollama in App Service:
-  - Production no longer defaults Ollama to localhost.
-  - Leave `OLLAMA_BASE_URL` empty or set to a reachable external host.
-- HTTPS enforcement:
-  - App-level HTTPS redirect middleware is enabled in production.
-  - Deploy workflow includes optional Azure CLI enforcement of HTTPS Only.
-- Build artifacts in git:
-  - `frontend/dist` is ignored in `.gitignore`.
-- Ephemeral local uploads:
-  - Production local document fallback is disabled unless `AZURE_UPLOADS_MODE=local-only` is explicitly set.
+## 2. Security and Secret Management
 
-## Nice-to-have improvements
+## 2.1 Required checks
 
-- Application Insights:
-  - App bootstraps telemetry when `APPLICATIONINSIGHTS_CONNECTION_STRING` is set.
-  - `applicationinsights` dependency added.
-- Prisma pooling:
-  - Prisma connection URL is now auto-hardened with pool parameters if missing.
-- Custom domain and SSL:
-  - Must be configured in Azure (manual portal/DNS steps).
-- Reminder scheduler:
-  - Cron-style dispatcher can run with `ENABLE_REMINDER_CRON=true`.
-  - Interval and batch size are configurable via env vars.
+- [ ] `.env` is not committed
+- [ ] All production secrets are sourced from platform configuration
+- [ ] `JWT_SECRET` is strong and rotated as needed
+- [ ] Azure storage credentials are valid and not leaked
+- [ ] `APP_BASE_URL` is set to correct HTTPS origin(s)
 
-## Manual actions still required in Azure
+## 2.2 App-level protections
 
-- Rotate Azure Storage credentials and update App Service setting.
-- Configure custom domain and managed certificate/SSL binding.
-- Ensure App Service settings include:
-  - `NODE_ENV=production`
-  - `APP_BASE_URL=https://...`
-  - `AZURE_STORAGE_CONNECTION_STRING=...`
-  - `AZURE_UPLOADS_MODE=azure-only`
-  - Optional telemetry and reminder settings.
+- [ ] Helmet CSP enabled
+- [ ] Global rate limiting enabled
+- [ ] Secure cookie behavior verified in production
+- [ ] Unauthorized access returns proper auth errors
+
+## 3. Infrastructure and Configuration
+
+## 3.1 Required app settings
+
+- [ ] `NODE_ENV=production`
+- [ ] `DATABASE_URL` configured
+- [ ] `APP_BASE_URL` configured
+- [ ] `AZURE_STORAGE_CONNECTION_STRING` configured
+- [ ] `AZURE_STORAGE_CONTAINER` configured
+- [ ] `AZURE_UPLOADS_MODE=azure-only`
+
+## 3.2 Platform settings
+
+- [ ] HTTPS Only enabled
+- [ ] WebSockets enabled
+- [ ] Startup command set to `bash startup.sh`
+
+## 4. Data and Migration Safety
+
+- [ ] `npx prisma generate` succeeds
+- [ ] `npx prisma migrate deploy` succeeds
+- [ ] Migration plan reviewed for breaking changes
+- [ ] Rollback strategy reviewed for schema changes
+
+## 5. Build and Test Gates
+
+Run and verify:
+
+```bash
+npm test
+npm run frontend:build
+```
+
+Required outcomes:
+- [ ] All tests pass
+- [ ] Frontend build succeeds
+- [ ] No blocker errors in runtime logs during startup
+
+## 6. Runtime Health and Smoke Tests
+
+## 6.1 Health endpoints
+
+- [ ] `GET /api/health/live` returns 200
+- [ ] `GET /api/health/ready` returns 200 (or expected 503 with dependency-failure payload)
+
+## 6.2 Session and shell
+
+- [ ] `GET /api/session` returns expected schema and request ID
+- [ ] SPA root and deep links render correctly
+
+## 6.3 Critical workflow smoke tests
+
+- [ ] Patient login -> booking -> appointment detail -> prescription view
+- [ ] Doctor login -> slots -> appointment handling -> prescription save
+- [ ] Profile action center controls visible and functional by role
+- [ ] AI Help button-first feature launcher functions as expected
+- [ ] Pharmacy and lab routes load and update status as permitted
+
+## 7. Storage and Document Behavior
+
+- [ ] Upload works in production mode
+- [ ] Document preview ACL works for allowed users
+- [ ] Unauthorized download/preview is blocked
+- [ ] No dependency on ephemeral local disk for production documents
+
+## 8. AI and Reminder Operations
+
+## 8.1 AI baseline
+
+- [ ] AI endpoints are auth-protected and rate-limited
+- [ ] AI outputs remain marked as review-required in UI/payload
+- [ ] Fallback behavior verified when AI host is unavailable
+
+## 8.2 Reminder baseline
+
+- [ ] Reminder routes are accessible with proper roles
+- [ ] Optional cron settings validated if enabled
+- [ ] Dispatch behavior and logs confirmed in staging
+
+## 9. Observability and Monitoring
+
+- [ ] Request IDs present in responses and logs
+- [ ] Structured logs available in platform log pipeline
+- [ ] Application Insights configured (if used)
+- [ ] Alerts configured for health/readiness failures
+
+## 10. Rollback Preparedness
+
+- [ ] Previous known-good deployment artifact is available
+- [ ] Slot-based or versioned rollback path is documented
+- [ ] Team knows rollback owner and escalation path
+- [ ] Post-rollback smoke checks are documented
+
+## 11. Go/No-Go Decision Template
+
+Go if:
+- All mandatory checkboxes are complete
+- No unresolved critical severity incidents
+- Monitoring and on-call coverage are confirmed
+
+No-Go if:
+- Any security, migration, or health readiness blocker remains
+- Rollback path is not verified
+
+## 12. Recommended Pre-Release Command Set
+
+```bash
+npm install
+npm run prisma:generate
+npm run db:deploy
+npm test
+npm run frontend:build
+```
+
+## 13. Post-Release Verification
+
+Immediately after deployment:
+- [ ] Validate health endpoints
+- [ ] Validate session endpoint
+- [ ] Confirm at least one patient and one doctor critical path
+- [ ] Confirm no spike in auth or server errors

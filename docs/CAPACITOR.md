@@ -1,34 +1,154 @@
-# Capacitor Mobile Wrap
+﻿# Capacitor Mobile Wrapper Guide
 
-This project can be wrapped into Android/iOS shells using Capacitor.
+This project supports wrapping the web application in native Android/iOS shells using Capacitor.
 
-## Prerequisites
+Current scope:
+- Web-to-native wrapper workflow for the existing SPA bundle
+- No native-only feature parity guarantees
 
+## 1. Prerequisites
+
+General:
 - Node.js 20+
-- Android Studio (for Android builds)
-- Xcode (for iOS builds, macOS only)
+- npm 10+
 
-## Initial setup
+Android:
+- Android Studio
+- Android SDK + platform tools
+- JDK 17 (recommended)
 
-1. Install Capacitor packages in the workspace:
-   - `npm install @capacitor/core @capacitor/cli`
-2. Add a native platform:
-   - Android: `npm run mobile:add:android`
-   - iOS: `npm run mobile:add:ios`
+iOS:
+- macOS
+- Xcode (latest stable)
+- CocoaPods
 
-## Build and sync web app into native shells
+## 2. Project Baseline
 
-- `npm run mobile:sync`
+- Capacitor config file: `capacitor.config.ts`
+- NPM helper scripts are defined in root `package.json`
 
-This command builds the frontend and syncs the output from `apps/frontend/dist` into native projects.
+If Capacitor CLI/core packages are not installed yet, add them:
 
-## Open Android project
+```bash
+npm install @capacitor/core @capacitor/cli
+```
 
-- `npm run mobile:open:android`
+Optional platform packages (auto-added when platform is added if missing):
 
-From Android Studio, run on emulator/device.
+```bash
+npm install @capacitor/android @capacitor/ios
+```
 
-## Notes
+## 3. Build and Sync Workflow
 
-- Capacitor config is defined in `capacitor.config.ts`.
-- Re-run `npm run mobile:sync` whenever web assets change.
+Always sync after frontend changes intended for mobile shell.
+
+```bash
+npm run mobile:sync
+```
+
+This runs:
+1. `npm run mobile:build`
+2. `npx cap sync`
+
+`mobile:build` points to `npm run frontend:build`, so web assets are generated before sync.
+
+## 4. Add Platforms
+
+Android:
+
+```bash
+npm run mobile:add:android
+```
+
+iOS:
+
+```bash
+npm run mobile:add:ios
+```
+
+Note:
+- Adding iOS must be done on macOS.
+
+## 5. Open Native Projects
+
+Android Studio:
+
+```bash
+npm run mobile:open:android
+```
+
+iOS in Xcode:
+
+```bash
+npx cap open ios
+```
+
+## 6. Recommended Daily Dev Flow
+
+For app/web changes:
+1. Update web code
+2. Run `npm run mobile:sync`
+3. Open native project
+4. Build and run on emulator/device
+
+For backend/API changes only:
+- No Capacitor sync needed unless web assets changed.
+
+## 7. Signing and Release Notes
+
+Android release signing:
+- Configure keystore in Android Studio/Gradle
+- Build signed APK/AAB via Android Studio
+
+iOS signing:
+- Configure signing team and bundle identifiers in Xcode
+- Archive and distribute with Xcode Organizer
+
+This repository does not include production signing keys.
+
+## 8. Troubleshooting
+
+### 8.1 `npx cap` command not found or fails
+
+Fix:
+- Ensure dependencies installed: `npm install`
+- Install Capacitor packages: `npm install @capacitor/core @capacitor/cli`
+
+### 8.2 Native app shows stale UI
+
+Fix:
+- Run `npm run mobile:sync` again
+- Clean/rebuild in Android Studio/Xcode
+
+### 8.3 Build fails after dependency changes
+
+Fix:
+- Delete and reinstall node modules
+- Re-run `npm install`
+- Re-run `npm run mobile:sync`
+
+### 8.4 Android Gradle issues
+
+Fix:
+- Use Android Studio to update Gradle plugin and SDK components
+- Confirm Java/JDK compatibility
+
+### 8.5 iOS pod issues
+
+Fix:
+- In `ios/App` run `pod install` (if needed)
+- Reopen workspace in Xcode
+
+## 9. CI/CD Considerations
+
+For web-only CI:
+- `npm run frontend:build` is sufficient
+
+For mobile packaging pipelines:
+- Include `npm run mobile:sync` before native build steps
+- Build native artifacts in platform-specific runners
+
+## 10. Scope Clarification
+
+Capacitor support in this project is intended for wrapper readiness and distribution convenience. Any device-specific native capabilities (background services, push notification native hooks, biometrics, deep native integrations) require dedicated feature work and testing.

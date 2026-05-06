@@ -30,6 +30,102 @@ paths:
                       - type: 'null'
                   requestId:
                     type: string
+  /medicines/top:
+    get:
+      summary: List top medicines from the curated catalog
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: Top medicines list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicineCatalogResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /medicines/search:
+    get:
+      summary: Search medicines in the curated catalog
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 2
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: Matched medicines list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicineCatalogResponse'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /prescriptions/catalog/search:
+    get:
+      summary: Search medicines enriched by reference and scoped prescription history
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 2
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+      responses:
+        '200':
+          description: Matched medicines from reference and history catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrescriptionCatalogResponse'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /documents/{documentId}/preview:
     get:
       summary: Preview a PDF document inline
@@ -479,6 +575,83 @@ components:
         timestamp:
           type: string
           format: date-time
+    MedicineCatalogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        genericName:
+          type: string
+          nullable: true
+        uses:
+          type: string
+          nullable: true
+        sideEffects:
+          type: array
+          items:
+            type: string
+    MedicineCatalogResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        query:
+          type: string
+          nullable: true
+        totalCatalogSize:
+          type: integer
+        count:
+          type: integer
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicineCatalogEntry'
+    PrescriptionCatalogEntry:
+      type: object
+      properties:
+        name:
+          type: string
+        genericName:
+          type: string
+          nullable: true
+        uses:
+          type: string
+          nullable: true
+        sideEffects:
+          type: array
+          items:
+            type: string
+        caution:
+          type: string
+          nullable: true
+        source:
+          type: string
+          enum: [reference, history, reference+history]
+        inPatientHistory:
+          type: boolean
+        diagnosisHint:
+          type: string
+          nullable: true
+        lastPrescribedAt:
+          type: string
+          format: date-time
+          nullable: true
+    PrescriptionCatalogResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        query:
+          type: string
+        count:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PrescriptionCatalogEntry'
     PharmacyOrder:
       type: object
       properties:

@@ -1,350 +1,179 @@
-# Design Specification: The Guided Journey Telemedicine App
+﻿# Design Specification
 
-## 1. Vision and Strategy
+## Product
 
-Core goal:
+Telemedicine Rural App
 
-- Provide a simple, trustworthy, and non-intimidating telemedicine experience for rural users with mixed digital literacy.
+## Document Purpose
 
-Design principle:
+This document defines the current UX architecture and visual behavior implemented in the web app. It is a practical implementation guide for product, engineering, and QA.
 
-- One task at a time. The interface guides users through clear actions instead of exposing a dense dashboard.
+## 1. Experience Principles
 
-Implementation status:
+1. Clarity over density
+- Keep high-priority actions immediately visible.
+- Reduce decision overhead for first-time and low-literacy users.
 
-- Implemented in the React app at `apps/frontend/src/App.jsx` and `apps/frontend/src/styles.css`.
-- Experience includes a guided landing, guided dashboard, booking wizard, simplified consultation room, and medicine cabinet.
+2. Guided progression
+- Break complex tasks into small, understandable steps.
+- Provide explicit labels and contextual hints.
 
-## 2. Visual Identity and Theme
+3. Mobile-first reliability
+- Core flows are optimized for narrow screens and inconsistent connectivity.
+- Interaction targets are large enough for touch usage.
 
-Theme:
+4. Safety and trust
+- Clinical AI output is clearly labeled as draft content.
+- Role and consent boundaries are reflected in UI visibility.
 
-- The Guided Journey (icon-driven and minimalist).
+## 2. Current Navigation System
 
-Color system:
+## 2.1 Top navigation (authenticated)
 
-- Primary: Soft Teal (`#0D9488`)
-- Secondary: Gentle Amber (`#F59E0B`)
-- Background: Warm Off-White (`#F9FAFB`)
-- Text: Deep Slate (`#1F2937`)
+- Search-first nav bar only
+- Global search input routes users to relevant pages (appointments, AI, profile, labs, medicines, etc.)
+- No top profile button menu
 
-Typography:
+## 2.2 Mobile bottom dock
 
-- Primary font: Nunito
-- Base size: 18px for readability on smaller screens
-
-Component style:
-
-- Rounded cards (`16px`) with subtle shadows
-- Large CTA buttons with high contrast
-- Literal icon cues on guided action cards
-
-## 3. Information Architecture and Routes
-
-Public routes:
-
-- `/` -> `WelcomePage`
-- `/auth/login` -> `LoginPage`
-- `/auth/register` -> `RegisterPage`
-
-Protected guided routes:
-
-- `/dashboard` -> Guided dashboard hub
-- `/book` -> Booking wizard
-- `/medicines` -> Medicine cabinet
-
-Protected supporting routes:
-
-- `/appointments`
-- `/appointments/impact`
-- `/appointments/:appointmentId`
-- `/calls/:appointmentId`
-- `/prescriptions/:appointmentId`
-- `/doctors`
-- `/doctors/:doctorId`
-- `/doctors/me/slots`
-- `/doctors/me/analytics`
-- `/profile`
-- `/users/me`
-- `/patients/me`
-- `/patients/workspace`
-
-Fallback behavior:
-
-- Unknown route redirects to `/`.
-
-## 4. Shared Authenticated Layout
-
-Authenticated shell (`ProtectedLayout`) includes:
-
-- Header with product identity
-- User chip with role
-- Simplified navigation actions
-
-Navigation labels:
-
+Fixed four-item dock:
 - Home
-- Book Visit
-- My Medicines
-- Appointments
-- Doctors
+- Visits
+- AI Help
 - Profile
-- Role-specific links (doctor and patient)
-- Logout
-
-Layout rules:
-
-- Mobile-first single column
-- Maximum two-column content sections on desktop
-
-## 5. Core Guided Flows
-
-### A. Welcome and Trust Entry
-
-Route:
-
-- `/`
-
-Purpose:
-
-- High-trust entry point before authentication.
-
-Main UI:
-
-- Trust headline
-- Three reassurance blocks
-- Primary actions for login and account creation
-
-Primary flow:
-
-- Anonymous user chooses login/register.
-- Authenticated user auto-redirects to `/dashboard`.
-
-### B. Guided Dashboard Hub
-
-Route:
-
-- `/dashboard`
-
-Purpose:
-
-- Present four explicit next actions.
-
-Action cards:
-
-- See a Doctor Now
-- Book a Visit
-- My Medicines
-- Talk to Someone
 
 Behavior:
+- Dock remains visible in standard app pages
+- Active page state is visually highlighted
+- Dock is hidden on call/prescription/full-detail contexts where needed
 
-- "See a Doctor Now" attempts online doctors first, then falls back to any doctor.
-- "Talk to Someone" opens support options.
+## 2.3 Profile action center
 
-### C. Booking Wizard
+Because the top profile menu was removed, profile-related controls live in the Profile page:
+- My Profile
+- Health action button (role-aware target)
+- My Medicines (patient)
+- Pharmacy Orders
+- Lab Tests
+- Data Saver toggle
+- Language selector panel
+- Profile share QR controls (patient)
+- Logout
 
-Route:
+## 3. Core Screen Patterns
 
-- `/book`
+## 3.1 Dashboard
 
-Audience:
+Patient dashboard includes:
+- Doctor search hero
+- Primary appointment actions
+- Specialty quick links
+- Mobile cards with side-by-side first-row actions
 
-- Patient-first guided booking flow.
+Note:
+- The old first-time guide card was removed.
 
-Steps:
+## 3.2 Booking
 
-- Step 1: Who is this for (self or family member)
-- Step 2: What is the problem (icon-based symptom pick)
-- Step 3: Choose your doctor
-- Step 4: Pick a time and consultation mode
+Guided booking flow follows a step-based interaction:
+- Select person (self/family)
+- Add symptoms/context
+- Select doctor
+- Select slot and mode
 
-Flow output:
+CTA behavior:
+- Primary next action remains clear at each step
+- Validation feedback appears inline
 
-- Final booking call submits to appointment booking API.
-- User is redirected to the booked appointment route or appointments list.
+## 3.3 Appointments and call
 
-Guidance feedback:
+Appointment detail:
+- Role-specific action buttons
+- Presence and readiness indicators
+- Re-book and follow-up paths when applicable
 
-- Friendly status text (for example, "Finding caring doctors near you...")
-- Progress chips and validated next-step progression
+Call page:
+- Main consult stage
+- Compact controls for mute/camera/audio mode
+- Chat fallback for weak connectivity
 
-### D. Simplified Consultation Room
+## 3.4 Prescription and PDF preview
 
-Route:
+- Prescription pages include printable/download paths
+- In-app PDF preview route avoids forced download
+- Prescription audio and language-aware narration support where available
 
-- `/calls/:appointmentId`
+## 3.5 AI Help
 
-Purpose:
+AI Help is button-first:
+- Users first pick a feature button
+- Tool form appears only after feature selection
+- Draft output includes review-required messaging
 
-- Minimize accidental errors during live consultation.
+## 4. Responsive Behavior
 
-Main UI:
+## 4.1 Breakpoints
 
-- Large remote video stage
-- Small local preview overlay
-- Compact mode controls
-- Mute and camera toggles
-- Separated high-visibility End Call button
-- Chat panel for low-network fallback communication
+Primary breakpoints:
+- <= 980px for broad mobile/tablet adaptations
+- <= 900px for denser dashboard/home card refinements
 
-Safety note:
+## 4.2 Mobile-specific decisions
 
-- Reconnection guidance is displayed to reduce user anxiety.
+- Top nav condensed to compact search control
+- Bottom dock uses a single flush bar pattern
+- Connectivity banner and translation dock are hidden on mobile to prevent bottom stacking conflicts
 
-### E. Prescription Handoff Experience
+## 5. Visual System
 
-Routes:
+## 5.1 Styling approach
 
-- `/medicines`
-- `/prescriptions/:appointmentId`
+- CSS variable based token system in `apps/frontend/src/styles.css`
+- Gradient-supported surfaces and elevated cards
+- Rounded corners and medium-soft shadows
 
-Purpose:
+## 5.2 Typography
 
-- Make medicine retrieval and pharmacy handoff clear and fast.
+- Primary family: Plus Jakarta Sans / Nunito stack
+- Large readable body sizing and spacing for healthcare readability
 
-Medicine cabinet:
+## 5.3 Color intent
 
-- Prescription cards with doctor and diagnosis
-- Large handoff code block
-- Quick actions for view and PDF download
+- Teal-based primary actions for trust and continuity
+- Warm accent tones for urgency and secondary emphasis
+- Neutral surfaces for readability and contrast
 
-Prescription page:
+## 6. Accessibility and Usability Guidelines
 
-- Readable prescription details
-- Doctor-owner edit controls
-- Prominent handoff code
+- Interactive controls use clear text labels
+- Form controls include associated labels
+- Buttons have explicit states (default/hover/disabled)
+- Language and network state are presented in plain text
+- Important actions avoid icon-only ambiguity
 
-## 6. Screen Inventory
+## 7. State and Feedback Patterns
 
-1. Welcome/Landing
+- Loading: explicit helper copy for long operations
+- Success: clear, short confirmation messages
+- Error: inline error text near related controls
+- Empty states: descriptive guidance and recovery actions
 
-- Route: `/`
-- Component: `WelcomePage`
-- Status: Implemented
+## 8. Implementation References
 
-1. Guided Dashboard
-
-- Route: `/dashboard`
-- Component: `DashboardPage`
-- Status: Implemented
-
-1. Booking Wizard (4 steps)
-
-- Route: `/book`
-- Component: `BookingWizardPage`
-- Status: Implemented
-
-1. Simplified Call Interface
-
-- Route: `/calls/:appointmentId`
-- Component: `CallPage`
-- Status: Implemented
-
-1. Medicine Cabinet
-
-- Route: `/medicines`
-- Component: `MedicineCabinetPage`
-- Status: Implemented
-
-Additional active screens:
-
-- Auth pages (`/auth/login`, `/auth/register`)
-- Appointments module
-- Doctors module
-- Profile and health/workspace pages
-- Prescription detail and PDF handoff
-
-## 7. API Integration by Guided Screen
-
-Welcome:
-
-- Session check through `GET /api/session` at app bootstrap.
-
-Guided dashboard:
-
-- `GET /api/doctors?online=online`
-- `GET /api/doctors` (fallback)
-
-Booking wizard:
-
-- `GET /api/doctors`
-- `GET /api/doctors/:doctorId`
-- `GET /api/patients/workspace`
-- `POST /api/appointments/book`
-
-Consultation room:
-
-- `GET /api/calls/:appointmentId`
-- `POST /api/calls/:appointmentId/end`
-- Runtime dependencies: `/socket.io/socket.io.js`, `/public/js/call.js`
-
-Medicine cabinet:
-
-- Patient path: `GET /api/patients/workspace`, `GET /api/prescriptions/:appointmentId`
-- Non-patient path: `GET /api/appointments`
-
-Prescription detail:
-
-- `GET /api/prescriptions/:appointmentId`
-- `POST /api/prescriptions/:appointmentId`
-- `GET /api/prescriptions/:appointmentId/pdf`
-
-## 8. Interaction and Feedback Guidelines
-
-Implemented interaction rules:
-
-- Every major action has visible feedback states.
-- Buttons provide hover and active press effects.
-- Errors are inline and short.
-- Success states are explicit.
-
-Loading messaging:
-
-- Uses helper text in key flows, not spinner-only behavior.
-
-Examples:
-
-- "Preparing your guided booking journey..."
-- "Finding caring doctors near you..."
-- "Organizing your medicine records..."
-
-## 9. Rural and Low-Bandwidth UX Notes
-
-Bandwidth strategy:
-
-- Text-first and icon-first UI to avoid heavy assets in critical flows.
-- Call runtime scripts loaded only on consultation route.
-
-Readability strategy:
-
-- Large base font size
-- High-contrast controls
-- Spacious touch targets
-
-## 10. Journey Snapshots
-
-Patient journey:
-
-- `/` -> `/auth/login` -> `/dashboard` -> `/book` -> `/appointments/:appointmentId` -> `/calls/:appointmentId` -> `/medicines`
-
-Doctor journey:
-
-- `/` -> `/auth/login` -> `/dashboard` -> `/appointments` -> `/calls/:appointmentId` -> `/prescriptions/:appointmentId` -> `/doctors/me/analytics`
-
-Admin journey:
-
-- `/` -> `/auth/login` -> `/dashboard` -> `/profile`
-
-## 11. Implementation References
-
-Core files:
-
+Primary implementation files:
 - `apps/frontend/src/App.jsx`
 - `apps/frontend/src/styles.css`
-- `apps/frontend/src/lib/api.js`
+- `apps/frontend/src/TranslationService.jsx`
 
-Server integration notes:
+Related backend dependencies for UX features:
+- `apps/backend/routes/*.js`
+- `apps/backend/controllers/*.js`
 
-- `app.js` serves SPA build and API routes.
-- API-mode middleware normalizes redirect payloads for JSON-driven frontend navigation.
+## 9. QA Focus Areas
+
+When validating UI changes, prioritize:
+- Search-only top nav behavior across roles
+- Bottom dock stability on mobile
+- Profile action center parity with former top-menu actions
+- AI feature launcher flow (button first, form second)
+- No regression in appointment booking and call entry

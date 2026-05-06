@@ -1,0 +1,19 @@
+# Elastic Beanstalk deployment ignore file
+# These are excluded from the deployment zip sent to EB
+
+.git
+.gitignore
+.github
+node_modules
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+qa-testing/reports
+qa-reports/reports
+*.swp
+.DS_Store
+Thumbs.db
+.vscode
+iisnode

@@ -5,7 +5,7 @@ const { upsertSchema } = require('../models/schemas/prescriptions.schemas');
 const { scheduleRefillReminderForAppointment } = require('../services/reminder.service');
 
 function parseItems(itemsText) {
-  // One per line: name, dosage, frequency, duration
+  // One per line: name, dosage, frequency, duration, side effects
   const lines = String(itemsText)
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -17,7 +17,8 @@ function parseItems(itemsText) {
       name: parts[0] || line,
       dosage: parts[1] || '',
       frequency: parts[2] || '',
-      duration: parts[3] || ''
+      duration: parts[3] || '',
+      sideEffects: parts[4] || ''
     };
   });
 }
@@ -33,18 +34,245 @@ function parseStructuredItems(raw) {
   const dosages = toArray(raw.dosage).map((v) => String(v || '').trim());
   const frequencies = toArray(raw.frequency).map((v) => String(v || '').trim());
   const durations = toArray(raw.duration).map((v) => String(v || '').trim());
+  const sideEffects = toArray(raw.sideEffects).map((v) => String(v || '').trim());
 
-  const maxLen = Math.max(names.length, dosages.length, frequencies.length, durations.length);
+  const maxLen = Math.max(names.length, dosages.length, frequencies.length, durations.length, sideEffects.length);
   const items = [];
   for (let i = 0; i < maxLen; i++) {
     const name = names[i] || '';
     const dosage = dosages[i] || '';
     const frequency = frequencies[i] || '';
     const duration = durations[i] || '';
-    if (!name && !dosage && !frequency && !duration) continue;
-    items.push({ name: name || 'Medication', dosage, frequency, duration });
+    const possibleSideEffects = sideEffects[i] || '';
+    if (!name && !dosage && !frequency && !duration && !possibleSideEffects) continue;
+    items.push({ name: name || 'Medication', dosage, frequency, duration, sideEffects: possibleSideEffects });
   }
   return items;
+}
+
+function normalizeSideEffects(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  }
+
+  return String(value || '')
+    .split(/[,;\n]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+const MEDICINE_REFERENCE_CATALOG = [
+  {
+    name: 'Paracetamol',
+    genericName: 'Acetaminophen',
+    uses: 'Fever and mild to moderate pain relief.',
+    sideEffects: ['Nausea', 'Rash', 'Liver strain in high doses'],
+    caution: 'Avoid exceeding the prescribed daily dose.'
+  },
+  {
+    name: 'Ibuprofen',
+    genericName: 'Ibuprofen',
+    uses: 'Pain, inflammation, and fever management.',
+    sideEffects: ['Stomach irritation', 'Heartburn', 'Dizziness'],
+    caution: 'Take after food unless your doctor advised otherwise.'
+  },
+  {
+    name: 'Amoxicillin',
+    genericName: 'Amoxicillin',
+    uses: 'Bacterial infection treatment.',
+    sideEffects: ['Loose stools', 'Nausea', 'Mild skin rash'],
+    caution: 'Complete the full antibiotic course.'
+  },
+  {
+    name: 'Cetirizine',
+    genericName: 'Cetirizine',
+    uses: 'Allergy symptom control.',
+    sideEffects: ['Sleepiness', 'Dry mouth', 'Headache'],
+    caution: 'Use caution with driving if drowsy.'
+  },
+  {
+    name: 'Pantoprazole',
+    genericName: 'Pantoprazole',
+    uses: 'Acidity and reflux symptom relief.',
+    sideEffects: ['Headache', 'Loose stools', 'Abdominal discomfort'],
+    caution: 'Usually taken before meals as advised by doctor.'
+  },
+  {
+    name: 'Metformin',
+    genericName: 'Metformin',
+    uses: 'Blood sugar control in diabetes.',
+    sideEffects: ['Nausea', 'Bloating', 'Loose stools'],
+    caution: 'Take with meals to reduce stomach upset.'
+  },
+  {
+    name: 'Amlodipine',
+    genericName: 'Amlodipine',
+    uses: 'Blood pressure control.',
+    sideEffects: ['Ankle swelling', 'Headache', 'Flushing'],
+    caution: 'Do not stop suddenly without medical advice.'
+  }
+];
+
+function buildSearchText(entry) {
+  return [entry.name, entry.genericName, entry.uses, entry.caution, ...(entry.sideEffects || []), entry.diagnosisHint]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function buildBaseMedicineCatalog() {
+  return MEDICINE_REFERENCE_CATALOG.map((entry) => ({
+    ...entry,
+    source: 'reference',
+    inPatientHistory: false,
+    diagnosisHint: '',
+    lastPrescribedAt: null,
+    searchText: buildSearchText(entry)
+  }));
+}
+
+function mergeCatalogEntry(map, nextEntry) {
+  const key = String(nextEntry?.name || '').trim().toLowerCase();
+  if (!key) return;
+
+  const existing = map.get(key);
+  if (!existing) {
+    map.set(key, {
+      ...nextEntry,
+      sideEffects: Array.from(new Set(normalizeSideEffects(nextEntry.sideEffects))),
+      searchText: buildSearchText(nextEntry)
+    });
+    return;
+  }
+
+  existing.sideEffects = Array.from(new Set([...normalizeSideEffects(existing.sideEffects), ...normalizeSideEffects(nextEntry.sideEffects)]));
+  existing.inPatientHistory = existing.inPatientHistory || Boolean(nextEntry.inPatientHistory);
+
+  const hasReferenceSource = String(existing.source || '').includes('reference') || String(nextEntry.source || '').includes('reference');
+  const hasHistorySource =
+    existing.inPatientHistory ||
+    String(existing.source || '').includes('history') ||
+    Boolean(nextEntry.inPatientHistory) ||
+    String(nextEntry.source || '').includes('history');
+
+  if (hasReferenceSource && hasHistorySource) {
+    existing.source = 'reference+history';
+  } else if (hasReferenceSource) {
+    existing.source = 'reference';
+  } else {
+    existing.source = 'history';
+  }
+
+  if (!existing.genericName && nextEntry.genericName) {
+    existing.genericName = nextEntry.genericName;
+  }
+  if (!existing.uses && nextEntry.uses) {
+    existing.uses = nextEntry.uses;
+  }
+  if (!existing.caution && nextEntry.caution) {
+    existing.caution = nextEntry.caution;
+  }
+  if (!existing.diagnosisHint && nextEntry.diagnosisHint) {
+    existing.diagnosisHint = nextEntry.diagnosisHint;
+  }
+
+  if (nextEntry.lastPrescribedAt) {
+    if (!existing.lastPrescribedAt || new Date(nextEntry.lastPrescribedAt).getTime() > new Date(existing.lastPrescribedAt).getTime()) {
+      existing.lastPrescribedAt = nextEntry.lastPrescribedAt;
+    }
+  }
+
+  existing.searchText = buildSearchText(existing);
+}
+
+async function loadScopedPrescriptionHistory(user) {
+  const where = { prescription: { isNot: null } };
+  if (user.role === 'patient') {
+    where.patientId = user.id;
+  } else if (user.role === 'doctor') {
+    where.doctorId = user.id;
+  }
+
+  return prisma.appointment.findMany({
+    where,
+    include: {
+      doctor: { select: { fullName: true } },
+      prescription: {
+        select: {
+          diagnosis: true,
+          items: true,
+          updatedAt: true
+        }
+      }
+    },
+    orderBy: { startAt: 'desc' },
+    take: 120
+  });
+}
+
+function buildHistoryCatalog(appointments) {
+  const output = [];
+
+  appointments.forEach((appointment) => {
+    const diagnosis = String(appointment?.prescription?.diagnosis || '').trim();
+    const items = Array.isArray(appointment?.prescription?.items) ? appointment.prescription.items : [];
+
+    items.forEach((item) => {
+      const name = String(item?.name || '').trim();
+      if (!name) return;
+
+      output.push({
+        name,
+        genericName: '',
+        uses: diagnosis ? `Used previously for ${diagnosis}.` : 'Seen in your prescription history.',
+        sideEffects: normalizeSideEffects(item?.sideEffects),
+        caution: `Doctor note: ${appointment?.doctor?.fullName || 'Doctor'} advised following exact dosage and frequency.`,
+        source: 'history',
+        inPatientHistory: true,
+        diagnosisHint: diagnosis,
+        lastPrescribedAt: appointment.startAt || appointment?.prescription?.updatedAt || null
+      });
+    });
+  });
+
+  return output;
+}
+
+function searchCatalogEntries(entries, query, limit) {
+  const needle = String(query || '').trim().toLowerCase();
+  if (!needle) return [];
+
+  const scored = entries
+    .filter((entry) => entry.searchText.includes(needle))
+    .map((entry) => {
+      const name = String(entry.name || '').toLowerCase();
+      let score = 0;
+      if (name === needle) score += 10;
+      else if (name.startsWith(needle)) score += 6;
+      else score += 3;
+      if (entry.inPatientHistory) score += 2;
+      return { entry, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ entry }) => {
+      const sideEffects = Array.from(new Set(normalizeSideEffects(entry.sideEffects))).slice(0, 8);
+      return {
+        name: entry.name,
+        genericName: entry.genericName,
+        uses: entry.uses,
+        sideEffects,
+        caution: entry.caution,
+        source: entry.source,
+        inPatientHistory: entry.inPatientHistory,
+        diagnosisHint: entry.diagnosisHint,
+        lastPrescribedAt: entry.lastPrescribedAt
+      };
+    });
+
+  return scored;
 }
 
 function parseHandoffFromNotes(notesValue) {
@@ -111,7 +339,7 @@ async function ensureAppointmentAccess(appointmentId, user) {
     where: { id: appointmentId },
     include: {
       doctor: { select: { id: true, fullName: true } },
-      patient: { select: { id: true, fullName: true } },
+      patient: { select: { id: true, fullName: true, language: true } },
       familyMember: { select: { id: true, fullName: true } },
       prescription: true
     }
@@ -123,6 +351,37 @@ async function ensureAppointmentAccess(appointmentId, user) {
 }
 
 const prescriptionsController = {
+  searchMedicineCatalog: async (req, res, next) => {
+    try {
+      const query = String(req.query.q || '').trim();
+      const limitRaw = Number(req.query.limit || 8);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(25, Math.floor(limitRaw))) : 8;
+
+      if (query.length < 2) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Enter at least 2 characters to search medicines.'
+        });
+      }
+
+      const [historyAppointments] = await Promise.all([loadScopedPrescriptionHistory(req.user)]);
+
+      const entryMap = new Map();
+      buildBaseMedicineCatalog().forEach((entry) => mergeCatalogEntry(entryMap, entry));
+      buildHistoryCatalog(historyAppointments).forEach((entry) => mergeCatalogEntry(entryMap, entry));
+
+      const results = searchCatalogEntries(Array.from(entryMap.values()), query, limit);
+      return res.json({
+        ok: true,
+        query,
+        results,
+        count: results.length
+      });
+    } catch (e) {
+      return next(e);
+    }
+  },
+
   viewPrescription: async (req, res, next) => {
     try {
       const appointmentId = req.params.appointmentId;
@@ -279,6 +538,9 @@ const prescriptionsController = {
         doc.fontSize(12).text(`${idx + 1}. ${item.name || ''}`);
         const parts = [item.dosage, item.frequency, item.duration].filter(Boolean).join(' | ');
         if (parts) doc.fontSize(10).text(parts, { indent: 14 });
+        if (item.sideEffects) {
+          doc.fontSize(10).text(`Possible side effects: ${item.sideEffects}`, { indent: 14 });
+        }
       });
       doc.moveDown();
 

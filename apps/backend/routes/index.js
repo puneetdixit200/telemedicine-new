@@ -13,6 +13,7 @@ const supportRoutes = require('./support.routes');
 const aiRoutes = require('./ai.routes');
 const healthRoutes = require('./health.routes');
 const innovationRoutes = require('./innovation.routes');
+const medicinesRoutes = require('./medicines.routes');
 
 function registerApiRoutes(apiRouter) {
   apiRouter.use('/health', healthRoutes);
@@ -39,6 +40,7 @@ function registerApiRoutes(apiRouter) {
   apiRouter.use('/support', supportRoutes);
   apiRouter.use('/ai', aiRoutes);
   apiRouter.use('/innovations', innovationRoutes);
+  apiRouter.use('/medicines', medicinesRoutes);
 }
 
 module.exports = { registerApiRoutes, documentsRoutes };

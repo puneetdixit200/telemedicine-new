@@ -1,25 +1,43 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
+﻿@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700&display=swap');
 
 :root {
-  --primary: #0d9488;
-  --primary-dark: #0b7f74;
-  --secondary: #f59e0b;
-  --background: #f9fafb;
+  --primary: #0a8f83;
+  --primary-dark: #087a70;
+  --primary-light: #e8faf7;
+  --secondary: #ff6b5a;
+  --secondary-light: #fff1ef;
+  --accent: #6366f1;
+  --background: #f4f6f8;
   --surface: #ffffff;
-  --text: #1f2937;
-  --muted: #4b5563;
-  --line: #d1d5db;
-  --danger: #b91c1c;
-  --success: #0f766e;
-  --compass-primary: #0d9488;
-  --compass-accent: #f59e0b;
+  --surface-glass: rgba(255, 255, 255, 0.72);
+  --surface-glass-strong: rgba(255, 255, 255, 0.88);
+  --text: #0f1729;
+  --text-secondary: #475569;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --compass-primary: #0a8f83;
+  --compass-accent: #ff6b5a;
   --compass-surface: #ffffff;
-  --compass-bg: #f9fafb;
-  --compass-text: #1f2937;
+  --compass-bg: #f4f6f8;
+  --compass-text: #0f1729;
   --app-gutter: clamp(0.75rem, 1.8vw, 2rem);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 41, 0.04), 0 1px 2px rgba(15, 23, 41, 0.06);
+  --shadow-md: 0 4px 16px rgba(15, 23, 41, 0.06), 0 2px 4px rgba(15, 23, 41, 0.04);
+  --shadow-lg: 0 12px 40px rgba(15, 23, 41, 0.08), 0 4px 12px rgba(15, 23, 41, 0.04);
+  --shadow-xl: 0 24px 56px rgba(15, 23, 41, 0.12), 0 8px 20px rgba(15, 23, 41, 0.06);
+  --radius-sm: 0.65rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.5rem;
+  --radius-pill: 999px;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -33,12 +51,14 @@ body,
   min-height: 100%;
   font-family: 'Plus Jakarta Sans', 'Nunito', 'Segoe UI', Tahoma, sans-serif;
   font-size: 18px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--text);
-  background:
-    radial-gradient(circle at 10% 8%, #def7f3 0%, transparent 30%),
-    radial-gradient(circle at 88% 3%, #fff1d4 0%, transparent 25%),
-    var(--background);
+  background: var(--background);
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(10, 143, 131, 0.07) 0%, transparent 50%),
+    radial-gradient(ellipse at 100% 0%, rgba(99, 102, 241, 0.05) 0%, transparent 40%),
+    radial-gradient(ellipse at 50% 100%, rgba(255, 107, 90, 0.04) 0%, transparent 50%);
+  background-attachment: fixed;
 }
 
 .material-symbols-outlined {
@@ -60,11 +80,30 @@ body,
 a {
   color: var(--primary-dark);
   text-decoration: none;
+  transition: color 0.15s var(--ease-smooth);
 }
 
 a:hover {
   text-decoration: underline;
+  color: var(--primary);
 }
+
+/* ── Entrance animations ── */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 
 .compass-shell {
   display: grid;
@@ -103,11 +142,13 @@ a:hover {
 }
 
 .compass-card {
-  border: 1px solid rgba(13, 148, 136, 0.16);
-  border-radius: 1.4rem;
-  background: var(--compass-surface);
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass-strong);
   padding: 0.95rem;
-  box-shadow: 0 12px 30px rgba(31, 41, 55, 0.08);
+  box-shadow: var(--shadow-md);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .compass-card h3 {
@@ -426,50 +467,51 @@ a:hover {
 .compass-action-btn,
 .compass-link-btn,
 .compass-toggle-btn {
-  min-height: 60px;
-  border-radius: 1rem;
+  min-height: 56px;
+  border-radius: var(--radius-md);
   border: 0;
-  background: var(--compass-accent);
-  color: #111827;
+  background: linear-gradient(135deg, var(--secondary), #ff8a7a);
+  color: #ffffff;
   font-weight: 800;
-  font-size: 0.98rem;
+  font-size: 0.95rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  padding: 0.65rem 0.95rem;
+  padding: 0.6rem 0.95rem;
   cursor: pointer;
-  transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease;
-  box-shadow: 0 12px 24px rgba(245, 158, 11, 0.32);
+  transition: transform 0.2s var(--ease-spring), box-shadow 0.2s var(--ease-smooth);
+  box-shadow: 0 8px 24px rgba(255, 107, 90, 0.25);
 }
 
 .compass-action-btn:hover,
 .compass-link-btn:hover,
 .compass-toggle-btn:hover {
-  transform: translateY(-2px) scale(1.01);
-  filter: saturate(1.08);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(255, 107, 90, 0.3);
   text-decoration: none;
 }
 
 .compass-action-btn:active,
 .compass-link-btn:active,
 .compass-toggle-btn:active {
-  transform: translateY(0) scale(0.99);
+  transform: translateY(0) scale(0.98);
 }
 
 .compass-action-btn.small,
 .compass-link-btn,
 .compass-toggle-btn {
-  min-height: 60px;
+  min-height: 56px;
 }
 
 .compass-action-btn.subtle,
 .compass-toggle-btn {
-  background: #e8fbf8;
-  color: #0f766e;
-  border: 1px solid rgba(13, 148, 136, 0.24);
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  border: 1px solid rgba(10, 143, 131, 0.18);
   box-shadow: none;
 }
+
 
 .compass-list {
   display: grid;
@@ -781,11 +823,13 @@ p {
 .welcome-card,
 .auth-card {
   width: min(980px, 96vw);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 16px;
+  background: var(--surface-glass-strong);
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  border-radius: var(--radius-xl);
   padding: 1.25rem;
-  box-shadow: 0 12px 30px rgba(31, 41, 55, 0.1);
+  box-shadow: var(--shadow-lg);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 
 .welcome-card h1 {
@@ -801,10 +845,16 @@ p {
 }
 
 .welcome-points article {
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  border-radius: var(--radius-lg);
   padding: 0.8rem;
-  background: #f8fffe;
+  background: var(--surface-glass);
+  transition: transform 0.2s var(--ease-spring), box-shadow 0.2s var(--ease-smooth);
+}
+
+.welcome-points article:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .welcome-actions {
@@ -818,7 +868,10 @@ p {
 .auth-register-shell {
   min-height: 100vh;
   position: relative;
-  background: #f8f9fa;
+  background: var(--background);
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(10, 143, 131, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 100% 100%, rgba(99, 102, 241, 0.06) 0%, transparent 40%);
 }
 
 .auth-login-main {
@@ -864,7 +917,7 @@ p {
   font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
   font-style: italic;
   font-weight: 800;
-  color: #0f766e;
+  color: var(--primary);
   letter-spacing: -0.02em;
 }
 
@@ -890,7 +943,7 @@ p {
 }
 
 .auth-login-panel {
-  background: #f8f9fa;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -970,21 +1023,21 @@ p {
 
 .auth-field-shell input {
   width: 100%;
-  height: 4.2rem;
-  border-radius: 1rem;
-  border: 0;
-  background: #e7e8e9;
-  color: #191c1d;
+  height: 3.8rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
   font-size: 1rem;
   padding: 0 3rem 0 3rem;
-  box-shadow: inset 0 0 0 1px transparent;
-  transition: box-shadow 160ms ease, background-color 160ms ease;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 200ms var(--ease-smooth), border-color 200ms var(--ease-smooth);
 }
 
 .auth-field-shell input:focus {
   outline: none;
-  background: #ffffff;
-  box-shadow: inset 0 0 0 2px rgba(0, 104, 95, 0.28);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(10, 143, 131, 0.12), var(--shadow-sm);
 }
 
 .auth-input-toggle {
@@ -1032,17 +1085,30 @@ p {
 
 .auth-submit-btn,
 .auth-register-submit {
-  margin-top: 0.4rem;
+  margin-top: 0.5rem;
   width: 100%;
   min-height: 3.6rem;
-  border: 1px solid #d18a1f;
-  border-radius: 0.95rem;
-  background: linear-gradient(130deg, #855300, #fea619);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--primary), #12b5a5);
   color: #ffffff;
   font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
-  font-size: 1.06rem;
+  font-size: 1.02rem;
   font-weight: 800;
-  box-shadow: 0 12px 28px rgba(133, 83, 0, 0.23);
+  box-shadow: 0 8px 24px rgba(10, 143, 131, 0.3);
+  transition: transform 0.2s var(--ease-spring), box-shadow 0.2s var(--ease-smooth);
+  cursor: pointer;
+}
+
+.auth-submit-btn:hover,
+.auth-register-submit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 32px rgba(10, 143, 131, 0.35);
+}
+
+.auth-submit-btn:active,
+.auth-register-submit:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .auth-submit-btn .material-symbols-outlined,
@@ -1492,10 +1558,105 @@ p {
   background: rgba(255, 255, 255, 0.24);
 }
 
+.compact-search-nav {
+  justify-content: center;
+  padding: 0.62rem var(--app-gutter);
+}
+.global-nav-search {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.17);
+  padding: 0.38rem 0.42rem;
+}
+.global-nav-search .material-symbols-outlined {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 1.1rem;
+  margin-left: 0.35rem;
+}
+.global-nav-search input {
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #ffffff;
+  min-height: 2.15rem;
+  font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
+  font-size: 0.9rem;
+}
+.global-nav-search input::placeholder {
+  color: rgba(255, 255, 255, 0.8);
+}
+.global-nav-search button {
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--primary-dark);
+  font-weight: 800;
+  min-height: 2.1rem;
+  min-width: 3rem;
+  padding: 0.15rem 0.7rem;
+  box-shadow: none;
+}
 .profile-menu {
   margin-left: auto;
   position: relative;
   flex: 0 0 auto;
+}
+.ai-feature-launcher {
+  display: grid;
+  gap: 0.75rem;
+}
+.ai-feature-button-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ai-feature-btn {
+  border: 1px solid rgba(13, 148, 136, 0.22);
+  border-radius: 0.95rem;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 0.62rem 0.72rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem;
+  text-align: left;
+  box-shadow: none;
+}
+.ai-feature-btn:hover {
+  transform: translateY(-1px);
+}
+.ai-feature-btn.active {
+  border-color: #0f766e;
+  background: #ecfdf5;
+}
+.ai-feature-btn .material-symbols-outlined {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: #d1fae5;
+  color: #0f766e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+}
+.ai-feature-btn strong {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 800;
+  font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
+}
+.ai-feature-btn small {
+  display: block;
+  color: #475569;
+  font-size: 0.74rem;
 }
 
 .sanctuary-brand {
@@ -1997,6 +2158,10 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 
+.grid.five {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+}
+
 .quick-grid,
 .grid.cards,
 .guided-grid,
@@ -2005,6 +2170,43 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 0.75rem;
   margin-top: 0.8rem;
+}
+
+.medicine-search-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.medicine-search-form {
+  align-items: stretch;
+}
+
+.medicine-search-form input {
+  min-width: min(100%, 320px);
+  flex: 1 1 320px;
+}
+
+.medicine-search-results {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.medicine-search-item {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: #ffffff;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.medicine-search-item h4 {
+  margin: 0;
+}
+
+.medicine-search-item p {
+  margin: 0;
 }
 
 .tile,
@@ -2181,32 +2383,38 @@ textarea {
 }
 
 .sanctuary-action-urgent {
-  background: #fea619;
-  color: #2a1700;
+  background: linear-gradient(145deg, #ff6b5a, #ff8a7a);
+  color: #ffffff;
 }
 
 .sanctuary-action-urgent .sanctuary-icon-badge {
-  background: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.22);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 .sanctuary-action-book {
-  background: #008378;
-  color: #f4fffc;
+  background: linear-gradient(145deg, #0a8f83, #12b5a5);
+  color: #ffffff;
 }
 
 .sanctuary-action-book .sanctuary-icon-badge {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.18);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 .sanctuary-action-neutral {
-  background: #ffffff;
-  color: #1b1c1d;
-  border: 1px solid #d9e4e2;
+  background: var(--surface-glass-strong);
+  color: var(--text);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .sanctuary-action-neutral .sanctuary-icon-badge {
-  background: #edeeef;
-  color: #00685f;
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
 .sanctuary-user-chip {
@@ -2333,11 +2541,11 @@ textarea {
   min-width: 132px;
   border-radius: 999px;
   border: 0;
-  background: linear-gradient(130deg, #00685f, #008378);
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
   color: #ffffff;
   font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
   font-weight: 800;
-  box-shadow: none;
+  box-shadow: 0 4px 12px rgba(10, 143, 131, 0.2);
 }
 
 .sanctuary-home-grid {
@@ -2361,22 +2569,22 @@ textarea {
   justify-content: flex-end;
   gap: 0.3rem;
   cursor: pointer;
-  box-shadow: 0 22px 34px rgba(25, 28, 29, 0.12);
-  transition: transform 180ms ease, box-shadow 180ms ease;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.25s var(--ease-spring), box-shadow 0.25s var(--ease-smooth);
 }
 
 .sanctuary-home-feature-card:first-child {
-  background: linear-gradient(160deg, #2e5f8f, #1c3f65);
+  background: linear-gradient(145deg, #1e4976, #2d6da8);
 }
 
 .sanctuary-home-feature-card:nth-child(2) {
-  background: linear-gradient(160deg, #0f6f67, #0a4f49);
+  background: linear-gradient(145deg, #0a8f83, #12b5a5);
 }
 
 .sanctuary-home-feature-card:hover {
   text-decoration: none;
-  transform: translateY(-2px);
-  box-shadow: 0 28px 42px rgba(25, 28, 29, 0.16);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-xl);
 }
 
 .sanctuary-home-feature-copy {
@@ -2416,35 +2624,37 @@ textarea {
 }
 
 .sanctuary-home-feature-icon.accent {
-  background: #fea619;
-  color: #2a1700;
+  background: var(--secondary);
+  color: #ffffff;
 }
 
 .sanctuary-home-mini-card {
   grid-column: span 2;
-  border-radius: 1.1rem;
-  border: 0;
-  background: #e1e3e4;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  background: var(--surface-glass-strong);
   min-height: 176px;
   padding: 1.1rem;
   text-decoration: none;
-  color: #191c1d;
-  box-shadow: 0 14px 24px rgba(25, 28, 29, 0.08);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  transition: transform 180ms ease, background-color 180ms ease;
+  transition: transform 0.25s var(--ease-spring), box-shadow 0.25s var(--ease-smooth);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .sanctuary-home-mini-card:hover {
   text-decoration: none;
-  transform: translateY(-2px);
-  background: #ffffff;
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
 }
 
 .sanctuary-home-mini-card .material-symbols-outlined {
   font-size: 2.35rem;
-  color: #00685f;
+  color: var(--primary);
 }
 
 .sanctuary-home-mini-card h3 {
@@ -2501,7 +2711,7 @@ textarea {
 
 .sanctuary-home-specialty-item {
   text-decoration: none;
-  color: #191c1d;
+  color: var(--text);
   display: grid;
   justify-items: center;
   gap: 0.55rem;
@@ -2510,20 +2720,23 @@ textarea {
 .sanctuary-home-specialty-item div {
   width: 100%;
   aspect-ratio: 1 / 1;
-  border-radius: 1rem;
-  background: #f3f4f5;
+  border-radius: var(--radius-md);
+  background: var(--surface-glass-strong);
+  border: 1px solid rgba(226, 232, 240, 0.4);
   display: grid;
   place-items: center;
-  transition: transform 200ms ease, background-color 200ms ease;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.25s var(--ease-spring), box-shadow 0.25s var(--ease-smooth), background-color 0.25s var(--ease-smooth);
 }
 
 .sanctuary-home-specialty-item:hover div {
   transform: translateY(-3px);
-  background: #d6faf5;
+  background: var(--primary-light);
+  box-shadow: var(--shadow-md);
 }
 
 .sanctuary-home-specialty-item .material-symbols-outlined {
-  color: #00685f;
+  color: var(--primary);
   font-size: 2rem;
 }
 
@@ -2536,9 +2749,10 @@ img.sanctuary-home-specialty-icon {
 .sanctuary-home-specialty-item > span {
   text-align: center;
   font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 700;
   line-height: 1.25;
+  color: var(--text-secondary);
 }
 
 .sanctuary-home-mobile {
@@ -2568,10 +2782,10 @@ img.sanctuary-home-specialty-icon {
   }
 
   .sanctuary-home-grid-mobile .sanctuary-home-feature-card {
-    grid-column: span 2;
-    min-height: 122px;
+    grid-column: span 1;
+    min-height: 132px;
     border-radius: 0.9rem;
-    padding: 0.78rem 0.82rem;
+    padding: 0.76rem 0.74rem;
   }
 
   .sanctuary-home-grid-mobile .sanctuary-home-feature-copy {
@@ -2579,12 +2793,13 @@ img.sanctuary-home-specialty-icon {
   }
 
   .sanctuary-home-grid-mobile .sanctuary-home-feature-copy h3 {
-    font-size: clamp(1.05rem, 5.8vw, 1.55rem);
+    font-size: clamp(0.96rem, 4.7vw, 1.22rem);
     line-height: 1.05;
   }
 
   .sanctuary-home-grid-mobile .sanctuary-home-feature-copy p {
-    font-size: 0.72rem;
+    font-size: 0.66rem;
+    line-height: 1.2;
   }
 
   .sanctuary-home-grid-mobile .sanctuary-home-feature-icon {
@@ -3183,6 +3398,25 @@ img.sanctuary-home-specialty-icon {
   margin-top: 0.25rem;
 }
 
+.profile-action-center {
+  gap: 0.7rem;
+}
+
+.profile-action-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.profile-action-grid .profile-menu-item,
+.profile-support-block .profile-menu-item {
+  width: 100%;
+}
+
+.profile-action-grid .profile-menu-item {
+  min-height: 52px;
+}
+
 .journey-workspace-grid {
   margin-top: 0.5rem;
   display: grid;
@@ -3620,7 +3854,7 @@ img.sanctuary-home-specialty-icon {
 .patient-prescription-medications .meta-grid {
   margin-top: 0.62rem;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 0.45rem;
 }
 
@@ -3667,6 +3901,35 @@ img.sanctuary-home-specialty-icon {
   margin: 0;
   color: #5f6a68;
   font-style: italic;
+}
+
+.patient-prescription-audio {
+  border: 2px solid rgba(188, 201, 198, 0.55);
+  background: rgba(224, 233, 231, 0.44);
+  border-radius: 1rem;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.patient-prescription-audio h2 {
+  margin: 0;
+  color: #2f4f4b;
+  font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
+  font-size: 1.05rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.patient-prescription-audio p {
+  margin: 0;
+  color: #40514d;
+  font-style: normal;
+}
+
+.patient-prescription-audio .row-inline button {
+  min-height: 2.6rem;
 }
 
 .patient-prescription-actions {
@@ -4863,6 +5126,10 @@ img.sanctuary-home-specialty-icon {
   align-items: flex-start;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.pdf-preview-audio-note {
+  margin: 0.45rem 0 0;
 }
 
 .pdf-preview-card {
@@ -6599,415 +6866,267 @@ img.sanctuary-home-specialty-icon {
 }
 
 @media (max-width: 980px) {
-  .quick-grid,
-  .grid.cards,
-  .guided-grid,
-  .medicine-grid,
-  .ai-status-grid,
-  .ai-toolbox-grid,
-  .sanctuary-grid,
-  .journey-history-grid,
-  .journey-doctors-grid,
-  .welcome-points,
-  .wizard-grid,
-  .wizard-list,
-  .grid.two,
-  .grid.three,
-  .grid.four,
-  .journey-controls-grid,
-  .journey-workspace-grid,
-  .journey-editorial-card,
-  .journey-editorial-form,
-  .journey-family-grid,
+  /* ═══════════════════════════════════════════
+     MOBILE REDESIGN — Premium Health App UX
+     ═══════════════════════════════════════════ */
+
+  /* ── Base ── */
+  html, body, #root {
+    font-size: 15px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ── Entrance animation for pages ── */
+  .page-wrap,
+  .compass-shell,
+  .ai-copilot-shell,
+  .ai-sanctuary-shell {
+    animation: fadeSlideUp 0.4s var(--ease-smooth) both;
+  }
+
+  /* ── Two-column → single column ── */
   .two-col {
     grid-template-columns: 1fr;
   }
 
+  /* ── Top Navigation — Frosted glass ── */
   .unified-nav {
-    position: fixed;
+    position: sticky;
     top: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    min-height: 68px;
-    padding: 0.6rem 0.9rem;
-    gap: 0.55rem;
-    border: 0;
-    border-radius: 0;
-    border-bottom: 1px solid rgba(188, 201, 198, 0.5);
-    background: rgba(255, 255, 255, 0.86);
-    color: #134e4a;
-    backdrop-filter: blur(20px);
-    box-shadow: 0 10px 24px rgba(25, 28, 29, 0.1);
     z-index: 120;
+    min-height: 54px;
+    padding: 0 1rem;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.4);
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--text);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    backdrop-filter: blur(20px) saturate(1.2);
+    box-shadow: 0 1px 8px rgba(15, 23, 41, 0.04);
   }
 
-  .nav-links {
+  .compact-search-nav {
+    min-height: auto;
+    padding: 0.4rem 0.8rem;
+  }
+
+  .global-nav-search {
+    border-color: rgba(15, 23, 42, 0.08);
+    background: #f8fafc;
+  }
+
+  .global-nav-search .material-symbols-outlined {
+    color: #64748b;
+  }
+
+  .global-nav-search input {
+    color: #0f172a;
+    font-size: 0.86rem;
+  }
+
+  .global-nav-search input::placeholder {
+    color: #64748b;
+  }
+
+  .global-nav-search button {
+    min-width: 2.8rem;
+    min-height: 1.95rem;
+    background: var(--primary);
+    color: #ffffff;
+  }
+
+  .unified-nav .nav-list {
     display: none;
   }
 
-  .ai-sanctuary-top {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .ai-top-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .unified-nav .brand {
-    min-width: 0;
-  }
-
-  .sanctuary-brand {
-    gap: 0.38rem;
-  }
-
-  .sanctuary-brand-icon {
-    color: #0f766e;
-    font-size: 1.5rem;
-  }
-
-  .unified-nav .brand h1 {
-    color: #0f766e;
-    font-size: 1.3rem;
-    font-style: italic;
-    line-height: 1.05;
-  }
-
-  .unified-nav .brand p {
-    display: none;
-  }
-
-  .profile-menu {
-    margin-left: auto;
-  }
-
-  .rural-connectivity-banner,
-  .translation-service-dock {
-    display: none;
-  }
-
-  .profile-menu-panel.sanctuary-profile-panel {
-    position: fixed;
-    top: 4.6rem;
-    left: 0.6rem;
-    right: 0.6rem;
-    min-width: 0;
-    width: auto;
-    max-height: calc(100dvh - 5.2rem);
-  }
-
-  .sanctuary-profile-trigger {
-    padding: 0.18rem;
-    border-color: rgba(0, 104, 95, 0.2);
-    background: rgba(0, 104, 95, 0.08);
-  }
-
-  .sanctuary-profile-copy,
-  .sanctuary-profile-trigger .menu-caret {
-    display: none;
-  }
-
-  .sanctuary-profile-avatar {
-    width: 32px;
-    height: 32px;
-    border: 0;
-  }
-
-  .page-wrap {
-    width: 100%;
-    margin: 0;
-    padding: 5.15rem 0.75rem 6.3rem;
-    gap: 0.8rem;
-  }
-
-  .mobile-bottom-nav {
-    position: fixed;
-    left: 0.5rem;
-    right: 0.5rem;
-    bottom: 0.5rem;
-    z-index: 115;
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    min-height: 72px;
-    border-radius: 1.7rem;
-    border: 1px solid rgba(188, 201, 198, 0.48);
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(22px);
-    box-shadow: 0 -20px 40px rgba(25, 28, 29, 0.12);
-    padding: 0.45rem;
-  }
-
-  .mobile-bottom-link {
-    flex: 1 1 0;
-    min-height: 60px;
-    border-radius: 1rem;
-    color: #6d7a77;
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    display: grid;
-    justify-items: center;
-    align-content: center;
-    gap: 0.16rem;
-    transition: transform 150ms ease, background-color 150ms ease;
-  }
-
-  .mobile-bottom-link .material-symbols-outlined {
+  .unified-nav .nav-brand {
     font-size: 1.25rem;
   }
 
-  .mobile-bottom-link:active {
-    transform: scale(0.95);
+  .unified-nav .nav-brand .material-symbols-outlined {
+    font-size: 1.35rem;
+  }
+
+  .profile-trigger .material-symbols-outlined {
+    font-size: 1.3rem;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 700;
+    transition: background 0.2s var(--ease-smooth);
+  }
+
+  .profile-trigger .material-symbols-outlined:hover {
+    background: rgba(10, 143, 131, 0.15);
+  }
+
+  /* ── Profile menu — Glass flyout ── */
+  .profile-menu {
+    top: 3.6rem;
+    right: 0.75rem;
+    left: auto;
+    width: calc(100vw - 1.5rem);
+    max-width: 340px;
+    border-radius: var(--radius-xl);
+    border: 1px solid rgba(226, 232, 240, 0.5);
+    background: var(--surface-glass-strong);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    box-shadow: var(--shadow-xl);
+    padding: 0.5rem;
+  }
+
+  .profile-section {
+    gap: 0.25rem;
+  }
+
+  .profile-item {
+    min-height: 48px;
+    border-radius: var(--radius-md);
+    padding: 0 0.85rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    transition: background 0.15s var(--ease-smooth);
+  }
+
+  .profile-item:hover {
+    background: rgba(10, 143, 131, 0.06);
+  }
+
+  .profile-item .material-symbols-outlined {
+    font-size: 1.2rem;
+    color: var(--muted);
+  }
+
+  /* ── Bottom Navigation — Instagram-style dock ── */
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 140;
+    min-height: 66px;
+    padding: 0.28rem 0.5rem calc(0.32rem + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(203, 213, 225, 0.85);
+    background: rgba(255, 255, 255, 0.98);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 -8px 22px rgba(15, 23, 42, 0.08);
+  }
+
+  .mobile-bottom-link {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.4rem 0.3rem;
+    text-decoration: none;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    transition: color 0.2s var(--ease-smooth);
+    position: relative;
+  }
+
+  .mobile-bottom-link .material-symbols-outlined {
+    font-size: 1.35rem;
+    transition: transform 0.25s var(--ease-spring);
   }
 
   .mobile-bottom-link.active {
-    background: #dcf7f2;
-    color: #0f766e;
+    color: var(--primary);
   }
 
   .mobile-bottom-link.active .material-symbols-outlined {
-    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+    transform: scale(1.04);
+    font-variation-settings: 'FILL' 1, 'wght' 600;
   }
 
-  .consult-stage {
-    min-height: 260px;
+  .mobile-bottom-link.active::before {
+    content: none;
   }
 
-  .consult-stage .local-preview {
-    width: min(46vw, 160px);
+  /* ── Page content spacing ── */
+  .page-wrap {
+    padding: 0.75rem 1rem 6.7rem;
+    gap: 0.85rem;
   }
 
-  .call-sanctuary-top {
-    position: static;
-    flex-direction: column;
-    align-items: flex-start;
+  .ai-feature-button-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* ── Cards refinement ── */
+  .compass-card,
+  .compass-hero {
+    border-radius: var(--radius-lg);
+    padding: 0.85rem;
+  }
+
+  .compass-hero h2 {
+    font-size: clamp(1.15rem, 5vw, 1.55rem);
+  }
+
+  .compass-metric-grid,
+  .compass-inline-grid,
+  .compass-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .compass-metric-card {
+    min-height: 90px;
     padding: 0.75rem;
   }
 
-  .call-top-left {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .call-top-meta {
-    border-left: 0;
-    padding-left: 0;
-  }
-
-  .call-top-right {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .call-sanctuary-main {
-    padding: 0.7rem 0.7rem 8rem;
-  }
-
-  .call-video-stage {
-    min-height: 260px;
-  }
-
-  .call-local-wrap {
-    width: min(44vw, 172px);
-  }
-
-  .call-sidebar {
-    padding: 0.7rem 0.7rem 8.2rem;
-  }
-
-  .call-chat-log {
-    min-height: 200px;
-    max-height: 300px;
-  }
-
-  .call-controls {
-    justify-content: stretch;
-    align-items: stretch;
-    padding: 0.5rem 0.65rem 0.75rem;
-    gap: 0.5rem;
-  }
-
-  .call-controls-group {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .call-control-btn {
-    min-width: 70px;
-    min-height: 54px;
-    padding: 0.4rem 0.55rem;
-  }
-
-  .call-control-btn.compact {
-    min-width: 100%;
-  }
-
-  .call-end-btn {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .doctor-appointment-topbar {
-    position: static;
-    flex-wrap: wrap;
-  }
-
-  .doctor-appointment-nav {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .doctor-appointment-top-actions {
-    margin-left: auto;
-  }
-
-  .doctor-appointment-action-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .doctor-appointment-history-list {
-    max-height: none;
-  }
-
+  /* ── Sanctuary action cards ── */
   .sanctuary-action {
-    min-height: 230px;
-    padding: 1rem;
-  }
-
-  .sanctuary-hero {
-    margin-top: 0.2rem;
-  }
-
-  .sanctuary-title {
-    font-size: clamp(2.25rem, 9vw, 2.7rem);
-    line-height: 1.08;
-  }
-
-  .sanctuary-subtitle {
-    font-size: 1rem;
-  }
-
-  .sanctuary-bg-icon {
-    font-size: 6rem;
+    border-radius: var(--radius-lg);
+    min-height: 200px;
+    padding: 1.15rem;
+    box-shadow: var(--shadow-lg);
   }
 
   .sanctuary-icon-badge {
-    width: 64px;
-    height: 64px;
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius-sm);
   }
 
   .sanctuary-icon-badge .material-symbols-outlined {
-    font-size: 2.25rem;
+    font-size: 1.65rem;
   }
 
-  .sanctuary-user-chip {
-    width: 100%;
-    justify-content: center;
+  .sanctuary-action-content strong {
+    font-size: clamp(1.15rem, 5vw, 1.55rem);
   }
 
-  .journey-appointment-card {
-    grid-template-columns: 1fr;
+  .sanctuary-action-content span {
+    font-size: 0.85rem;
   }
 
-  .journey-title {
-    font-size: clamp(2.2rem, 9vw, 2.75rem);
-    line-height: 1.08;
+  .sanctuary-bg-icon {
+    font-size: 4.5rem;
+    opacity: 0.12;
   }
 
-  .journey-sub {
-    font-size: 1rem;
-  }
-
-  .journey-controls-grid {
-    gap: 0.65rem;
-  }
-
-  .journey-search-shell,
-  .journey-filter-shell {
-    min-height: 62px;
-    border-radius: 999px;
-  }
-
-  .journey-doctors-grid {
-    gap: 0.9rem;
-  }
-
-  .journey-doctor-card {
-    border-radius: 1.15rem;
-    padding: 1rem;
-  }
-
-  .journey-doctor-avatar {
-    width: 84px;
-    height: 84px;
-    border-radius: 1rem;
-    font-size: 2rem;
-  }
-
-  .journey-profile-hero {
-    align-items: center;
-  }
-
-  .journey-profile-avatar {
-    width: 74px;
-    height: 74px;
-  }
-
-  .journey-form-card,
-  .journey-upload-card,
-  .journey-family-sidebar,
-  .journey-editorial-card {
-    border-radius: 1.15rem;
-  }
-
-  .journey-form-grid input,
-  .journey-form-grid textarea,
-  .journey-editorial-form input,
-  .journey-editorial-form textarea,
-  .journey-family-card input,
-  .journey-family-card textarea {
-    border-radius: 1rem;
-  }
-
-  .journey-appt-actions,
-  .journey-history-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .doctor-slots-grid,
-  .doctor-status-actions,
-  .doctor-bulk-time-grid,
-  .doctor-metric-grid,
-  .doctor-bar-chart,
-  .doctor-insights-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .doctor-bar-chart {
-    min-height: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.55rem;
-  }
-
-  .doctor-bar-col {
-    width: calc(50% - 0.28rem);
-    min-height: 140px;
-  }
-
-  .doctor-slot-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
+  /* ── Auth pages ── */
   .auth-login-main {
     grid-template-columns: 1fr;
-    min-height: 100dvh;
   }
 
   .auth-login-showcase {
@@ -7016,387 +7135,323 @@ img.sanctuary-home-specialty-icon {
 
   .auth-mobile-brand {
     display: flex;
+    font-size: 1.65rem;
+    margin-bottom: 1rem;
   }
 
   .auth-login-panel {
-    padding-top: 1rem;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 2rem 1.25rem;
+    background: #ffffff;
   }
 
   .auth-login-header h2 {
-    font-size: clamp(2.1rem, 9vw, 2.65rem);
-    line-height: 1.05;
+    font-size: clamp(1.65rem, 7vw, 2.2rem);
   }
 
-  .auth-divider,
-  .auth-social-grid {
-    display: none;
+  .auth-login-header p {
+    font-size: 0.92rem;
+    color: var(--muted);
   }
 
   .auth-field-shell input {
-    height: 4rem;
-    border-radius: 1rem;
+    height: 3.4rem;
+    border-radius: var(--radius-md);
+    font-size: 16px; /* prevents iOS zoom */
   }
 
   .auth-submit-btn,
   .auth-register-submit {
-    min-height: 4.4rem;
-    border-radius: 1rem;
-    font-size: 1.12rem;
+    min-height: 3.2rem;
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
   }
 
-  .auth-social-grid,
-  .auth-register-grid,
-  .auth-register-trust-grid,
-  .patient-history-overview,
-  .patient-history-grid,
-  .patient-upload-grid,
-  .patient-appointment-action-grid {
+  .auth-social-grid {
     grid-template-columns: 1fr;
+    gap: 0.5rem;
   }
 
-  .patient-appointment-main {
-    grid-template-columns: 1fr;
+  .auth-social-btn {
+    min-height: 3rem;
+    border-radius: var(--radius-md);
   }
 
-  .booking-sanctuary-shell {
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    background: transparent;
-    padding: 0.2rem 0;
-  }
-
-  .booking-sanctuary-header h2 {
-    font-size: clamp(2.15rem, 9vw, 2.65rem);
-    line-height: 1.08;
-  }
-
-  .booking-sanctuary-header p {
-    font-size: 0.98rem;
-  }
-
-  .booking-symptom-grid,
-  .booking-mode-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .booking-mode-card:first-child {
-    grid-column: 1 / -1;
-    min-height: 150px;
-    justify-items: start;
-    text-align: left;
-  }
-
-  .booking-mode-card:first-child span {
-    font-size: 2rem;
-  }
-
-  .booking-slot-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .booking-action-bar {
-    position: sticky;
-    bottom: 5.4rem;
-    background: linear-gradient(to top, rgba(248, 249, 250, 0.98), rgba(248, 249, 250, 0.7));
-    backdrop-filter: blur(8px);
-    padding: 0.9rem 0 0.2rem;
-  }
-
-  .booking-next-btn,
-  .booking-back-btn {
-    min-height: 56px;
-    border-radius: 0.95rem;
-  }
-
-  .booking-next-btn {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .ai-sanctuary-shell {
-    gap: 0.75rem;
-  }
-
-  .ai-sanctuary-top {
-    border-radius: 1.2rem;
-    padding: 0.9rem;
-  }
-
-  .ai-toolbox-title {
-    font-size: clamp(1.65rem, 8vw, 2rem);
-  }
-
-  .patient-prescription-shell {
-    padding: 0.35rem;
-    border-radius: 1rem;
-  }
-
-  .patient-prescription-topbar {
-    position: static;
-  }
-
-  .patient-prescription-main {
-    width: 100%;
-    padding-bottom: 0.8rem;
-  }
-
-  .patient-prescription-hero h1 {
-    font-size: clamp(2rem, 9vw, 3rem);
-  }
-
-  .patient-prescription-summary-grid,
-  .patient-prescription-medications .meta-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .patient-prescription-medications article {
-    grid-template-columns: 1fr;
-  }
-
-  .patient-prescription-actions {
-    margin-bottom: 0.3rem;
-  }
-
-  .patient-prescription-bottom-nav {
-    display: flex;
-  }
-
-  .patient-appointment-topbar {
-    position: sticky;
-    top: 4.9rem;
-    z-index: 30;
-    border-radius: 1rem;
-    border-color: rgba(188, 201, 198, 0.45);
-    background: rgba(255, 255, 255, 0.85);
-    min-height: 66px;
-    padding: 0.55rem 0.75rem;
-    box-shadow: 0 12px 24px rgba(25, 28, 29, 0.09);
-  }
-
-  .patient-appointment-brand strong {
-    font-size: 1rem;
-    font-style: italic;
-    color: #0f766e;
-  }
-
-  .patient-appointment-main {
-    grid-template-columns: 1fr;
-    gap: 0.95rem;
-  }
-
-  .patient-appointment-left,
-  .patient-appointment-right {
-    gap: 0.9rem;
-  }
-
-  .patient-appointment-summary {
-    border-radius: 1rem;
-    border: 1px solid rgba(188, 201, 198, 0.38);
-    background: #ffffff;
-    box-shadow: 0 16px 34px rgba(25, 28, 29, 0.07);
-    padding: 0.95rem;
-    position: relative;
-  }
-
-  .patient-appointment-status {
-    position: absolute;
-    top: 0.95rem;
-    right: 0.95rem;
-  }
-
-  .patient-appointment-summary h1 {
-    margin-top: 0.35rem;
-    font-size: clamp(1.35rem, 6vw, 1.9rem);
-    line-height: 1.2;
-    max-width: 80%;
-  }
-
-  .patient-appointment-summary p {
-    margin-top: 0.3rem;
-  }
-
-  .patient-summary-type {
-    font-size: 0.84rem;
-  }
-
-  .patient-appointment-action-card {
-    border-radius: 1rem;
-    padding: 0.85rem;
-    gap: 0.65rem;
-  }
-
-  .patient-mobile-primary-actions {
-    align-items: stretch;
-  }
-
-  .patient-appointment-cta.primary,
-  .patient-appointment-emergency-btn {
-    min-height: 64px;
-    height: 64px;
-  }
-
-  .patient-appointment-mode {
-    border-top: 1px solid rgba(188, 201, 198, 0.35);
-    padding-top: 0.6rem;
-  }
-
-  .patient-appointment-participants {
-    border: 0;
-    background: transparent;
-    padding: 0;
-    gap: 0.65rem;
-  }
-
-  .patient-appointment-participants h3 {
-    color: #0f172a;
-    font-size: 1.02rem;
-    letter-spacing: 0;
-    text-transform: none;
-  }
-
-  .patient-participant-row {
-    border: 1px solid rgba(188, 201, 198, 0.42);
-    border-radius: 0.95rem;
-    background: #f3f4f5;
-    padding: 0.6rem;
-  }
-
-  .patient-participant-main p {
-    color: #4b5563;
-  }
-
-  .patient-info-card,
-  .patient-info-card.soft {
-    border-radius: 1rem;
-    padding: 0.9rem;
-  }
-
-  .patient-upload-grid .patient-form-submit {
-    justify-self: stretch;
-    width: 100%;
-  }
-
-  .patient-appointment-mobile-nav {
-    position: fixed;
-    left: 0.55rem;
-    right: 0.55rem;
-    bottom: 0.45rem;
-    z-index: 115;
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    border-radius: 1.7rem;
-    border: 1px solid rgba(188, 201, 198, 0.46);
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(22px);
-    box-shadow: 0 -20px 40px rgba(25, 28, 29, 0.13);
-    min-height: 72px;
-    padding: 0.42rem;
-  }
-
-  .patient-appointment-mobile-nav a {
-    flex: 1 1 0;
-    min-height: 60px;
-    border-radius: 1rem;
-    color: #6d7a77;
-    font-size: 0.68rem;
-    font-weight: 800;
-    display: grid;
-    justify-items: center;
-    align-content: center;
-    gap: 0.16rem;
-    text-decoration: none;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    transition: transform 150ms ease, background-color 150ms ease;
-  }
-
-  .patient-appointment-mobile-nav a:active {
-    transform: scale(0.95);
-  }
-
-  .patient-appointment-mobile-nav a.active {
-    color: #0f766e;
-    background: #dcf7f2;
-  }
-
-  .patient-appointment-mobile-nav .material-symbols-outlined {
-    font-size: 1.24rem;
-  }
-
-  .patient-appointment-mobile-nav a.active .material-symbols-outlined {
-    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
-  }
-
+  /* ── Auth register ── */
   .auth-register-main {
-    margin-top: 1.1rem;
-    margin-bottom: 0.8rem;
-    gap: 0.9rem;
+    grid-template-columns: 1fr;
+    padding: 1rem;
   }
 
   .auth-register-hero h1 {
-    font-size: clamp(2.2rem, 9vw, 2.8rem);
-    line-height: 1.06;
+    font-size: 1.45rem;
   }
 
   .auth-register-hero p {
-    font-size: 1rem;
-  }
-
-  .auth-register-grid input,
-  .auth-register-grid select,
-  .auth-register-grid textarea {
-    border-radius: 1rem;
-    min-height: 62px;
-  }
-
-  .auth-register-grid textarea {
-    min-height: 120px;
-  }
-
-  .rural-connectivity-banner {
-    right: 0.55rem;
-    left: 0.55rem;
-    bottom: 0.5rem;
-    max-width: none;
-  }
-
-  .translation-service-dock {
-    left: 0.55rem;
-    bottom: 4.4rem;
-  }
-
-  .translation-service-dock .gtranslate_wrapper {
-    min-width: 140px;
-  }
-
-  .compass-two-col,
-  .compass-metric-grid,
-  .compass-inline-grid,
-  .compass-row {
-    grid-template-columns: 1fr;
-  }
-
-  .compass-row-actions {
-    justify-items: stretch;
-  }
-
-  .compass-link-btn,
-  .compass-toggle-btn,
-  .compass-action-btn {
-    width: 100%;
+    font-size: 0.88rem;
+    color: var(--muted);
   }
 
   .auth-register-card {
+    padding: 1rem;
+    border-radius: var(--radius-lg);
+  }
+
+  .auth-register-grid textarea {
+    min-height: 80px;
+    font-size: 16px;
+  }
+
+  .auth-register-grid textarea {
+    min-height: 80px;
+  }
+
+  .auth-register-grid label {
+    font-size: 0.85rem;
+  }
+
+  .auth-register-trust-grid article {
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+  }
+
+  .auth-register-trust-grid h3 {
+    font-size: 0.88rem;
+  }
+
+  .auth-register-trust-grid p {
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  /* ── Connectivity banners ── */
+  .rural-connectivity-banner {
+    display: none !important;
+  }
+
+  /* ── Translation dock ── */
+  .translation-service-dock {
+    display: none !important;
+  }
+
+  /* ── Compass rows ── */
+  .compass-row {
+    grid-template-columns: 1fr;
+    border-radius: var(--radius-md);
+  }
+
+  .compass-row-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: stretch;
+  }
+
+  .compass-action-btn {
+    min-height: 48px;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .compass-card {
+    border-radius: var(--radius-lg);
     padding: 0.8rem;
   }
 
-  .auth-help-fab {
-    bottom: 4.7rem;
+  .compass-hero {
+    border-radius: var(--radius-lg);
+    padding: 0.8rem;
   }
 
+  .compass-hero h2 {
+    font-size: clamp(1.1rem, 4vw, 1.45rem);
+  }
+
+  .compass-metric-card {
+    min-height: 80px;
+    padding: 0.7rem;
+    border-radius: var(--radius-md);
+  }
+
+  /* ── Help FAB ── */
+  .auth-help-fab {
+    bottom: 1.25rem;
+    right: 1.25rem;
+    width: auto;
+    min-height: 40px;
+    border-radius: var(--radius-pill);
+    padding: 0.5rem 1rem;
+    font-size: 0.78rem;
+    z-index: 30;
+    box-shadow: var(--shadow-md);
+  }
+
+  .auth-help-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 0.9rem;
+    background: linear-gradient(135deg, var(--primary), #12b5a5);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── Journey FAB ── */
   .journey-fab {
-    bottom: 6.1rem;
+    bottom: 5.5rem;
+    right: 1rem;
+    min-height: 44px;
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* ── Auth card ── */
+  .auth-card {
+    width: 100%;
+    border-radius: var(--radius-xl);
+    padding: 1rem;
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* ── Welcome card ── */
+  .welcome-card h1 {
+    font-size: clamp(1.3rem, 5.5vw, 1.65rem);
+  }
+
+  .welcome-points article {
+    border-radius: var(--radius-md);
+    padding: 0.7rem;
+  }
+
+  .welcome-actions .btn {
+    min-height: 48px;
+    font-size: 0.88rem;
+    border-radius: var(--radius-md);
+  }
+
+  /* ── Typography scale ── */
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  h1 { font-size: clamp(1.35rem, 6vw, 1.85rem); }
+  h2 { font-size: clamp(1.15rem, 5vw, 1.55rem); }
+  h3 { font-size: clamp(0.95rem, 4vw, 1.15rem); }
+
+  /* ── Call/chat ── */
+  .call-chat-log {
+    max-height: 340px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Dashboard search ── */
+  .sanctuary-home-search {
+    border-radius: var(--radius-lg);
+    min-height: 48px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .sanctuary-home-search input {
+    font-size: 16px;
+    padding: 0 2.5rem;
+  }
+
+  .sanctuary-home-search .material-symbols-outlined {
+    left: 1rem;
+    font-size: 1.35rem;
+    color: var(--muted);
+  }
+
+  .sanctuary-home-search button {
+    min-width: 80px;
+    font-size: 0.78rem;
+    border-radius: var(--radius-pill);
+  }
+
+  /* ── Kicker labels ── */
+  .kicker {
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    font-weight: 800;
+    color: var(--primary);
+  }
+
+  /* ── Loading screen ── */
+  .loading-screen {
+    min-height: 100dvh;
+    padding: 1rem;
+  }
+
+  /* ── Auth footer ── */
+  .auth-login-footer {
+    margin-top: 1rem;
+    font-size: 0.72rem;
+  }
+
+  .auth-footer-links {
+    gap: 0.8rem;
+  }
+
+  .auth-footer-links a {
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  /* ── Form inputs global ── */
+  .compass-form input,
+  .compass-form select,
+  .compass-form textarea {
+    min-height: 48px;
+    font-size: 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    padding: 0.5rem 0.7rem;
+  }
+
+  .compass-form input:focus,
+  .compass-form select:focus,
+  .compass-form textarea:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(10, 143, 131, 0.1);
+  }
+
+  /* ── Patient prescription topbar ── */
+  .patient-prescription-topbar {
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    min-height: 56px;
+  }
+
+  /* ── Booking bar ── */
+  .booking-sticky-bar {
+    position: sticky;
+    bottom: 5rem;
+    background: linear-gradient(to top, rgba(244, 246, 248, 0.98), rgba(244, 246, 248, 0.5));
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    padding: 0.75rem 0 0.15rem;
+  }
+
+  /* ── AI panels ── */
+  .ai-status-grid,
+  .ai-toolbox-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-copilot-hero,
+  .ai-sanctuary-top {
+    border-radius: var(--radius-lg);
+  }
+
+  /* ── Journey page ── */
+  .journey-title {
+    font-size: clamp(1.5rem, 7vw, 2rem);
+  }
+
+  .journey-sub {
+    font-size: 0.92rem;
   }
 }
+
