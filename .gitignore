@@ -5,7 +5,7 @@ node_modules
 .env.test
 .env.production
 
-# Build output (generated during deploy)
+# Build output (committed for deploy via .ebignore)
 apps/frontend/dist
 
 # Local uploads (use Azure Blob in production)
@@ -23,3 +23,8 @@ qa-reports/reports/
 Thumbs.db
 .vscode/settings.json
 *.swp
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
