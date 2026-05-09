@@ -13,7 +13,7 @@ supabase/.temp/
 apps/frontend/dist
 
 # Local uploads (use Azure Blob in production)
-uploads/
+/uploads/
 
 # Azure App Service logs
 iisnode/
