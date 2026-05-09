@@ -2,12 +2,25 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+      AZURE_STORAGE_CONTAINER: ${{ secrets.AZURE_STORAGE_CONTAINER }}
+      AZURE_STORAGE_PUBLIC_BASE_URL: ${{ secrets.AZURE_STORAGE_PUBLIC_BASE_URL }}
+      AZURE_UPLOADS_MODE: azure-only
+      APP_BASE_URL: http://127.0.0.1:3000
+      READINESS_TIMEOUT_MS: 5000
+      ADMIN_INVITE_CODE: ${{ secrets.ADMIN_INVITE_CODE }}
 
     steps:
       - name: Checkout
@@ -31,5 +44,37 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
-      - name: Frontend build
-        run: npm run frontend:build
+      - name: Next.js build
+        run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Seed demo data and run Playwright E2E
+        shell: bash
+        run: |
+          required=(
+            DATABASE_URL
+            NEXT_PUBLIC_SUPABASE_URL
+            NEXT_PUBLIC_SUPABASE_ANON_KEY
+            SUPABASE_SERVICE_ROLE_KEY
+            AZURE_STORAGE_CONNECTION_STRING
+            AZURE_STORAGE_CONTAINER
+          )
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "Skipping Playwright E2E because $name is not configured as a repository secret."
+              exit 0
+            fi
+          done
+          npm run db:deploy
+          npm run db:seed
+          npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore

@@ -28,23 +28,22 @@
     "mobile:open:android": "npx cap open android",
     "uploads:migrate:azure": "node scripts/migrate-local-uploads-to-azure.js",
     "uploads:migrate:azure:clean": "node scripts/migrate-local-uploads-to-azure.js --delete-local",
-    "lint": "node --check app.js && node --check server-next.js",
+    "lint": "node --check app.js && node --check server-next.js && node --check apps/backend/services/supabase-auth.service.js && node --check apps/backend/public/js/call.js && node --check public/js/call.js && node --check playwright.config.js && node --check jest.config.js && node --check e2e/telemedicine.spec.js",
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "test": "jest --runInBand",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "test:watch": "jest --watch",
-    "ci": "npm run lint && npm test && npm run prisma:generate && npm run build"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
+    "ci": "npm run lint && npm test && npm run prisma:generate && npm run build && npm run test:e2e"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.7.0",
-    "@supabase/supabase-js": "^2.87.1",
     "@azure/storage-blob": "^12.28.0",
     "@prisma/client": "^6.6.0",
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.87.1",
     "applicationinsights": "^3.6.2",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
@@ -61,11 +60,11 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^6.30.1",
-    "socket.io": "^4.8.1",
     "uuid": "^11.1.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.27",
     "jest": "^29.7.0",

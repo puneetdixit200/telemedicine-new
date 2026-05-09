@@ -36,6 +36,7 @@ describe('Next.js Supabase migration guard', () => {
     expect(legacyBoundary).toContain("'use client'");
     expect(legacyBoundary).toContain('ssr: false');
     expect(legacyRuntime).toContain('BrowserRouter');
+    expect(legacyRuntime).toContain('v7_startTransition');
     expect(legacyRuntime).toContain("apps/frontend/src/App");
   });
 
@@ -81,7 +82,29 @@ describe('Next.js Supabase migration guard', () => {
     expect(migration).toContain('enable row level security');
     expect(migration).toContain('telemedicine_current_user_id');
     expect(supabaseReadme).toContain('Supabase');
-    expect(repoSetup).toContain('telemedicine-next-supabase');
+    expect(repoSetup).toContain('telemedicine-new');
     expect(apiFallback).toContain('createApp');
+  });
+
+  it('uses Supabase Auth, Prisma config seed, Vercel CI, and Playwright E2E wiring', () => {
+    const pkg = readJson('package.json');
+    const schema = readText('prisma/schema.prisma');
+    const authController = readText('apps/backend/controllers/auth.controller.js');
+    const authMiddleware = readText('apps/backend/middleware/auth.js');
+    const prismaConfig = readText('prisma.config.ts');
+    const ci = readText('.github/workflows/ci.yml');
+    const playwrightConfig = readText('playwright.config.js');
+
+    expect(pkg).not.toHaveProperty('prisma');
+    expect(pkg.scripts).toHaveProperty('test:e2e');
+    expect(schema).toMatch(/passwordHash\s+String\?/);
+    expect(schema).toMatch(/supabaseAuthUserId\s+String\?\s+@unique/);
+    expect(authController).toContain('signInWithPassword');
+    expect(authController).toContain('createOrUpdateAuthUser');
+    expect(authMiddleware).toContain('getAuthenticatedSupabaseUser');
+    expect(prismaConfig).toContain("seed: 'node prisma/seed.js'");
+    expect(ci).toContain('npm run build');
+    expect(ci).toContain('npm run test:e2e');
+    expect(playwrightConfig).toContain('@playwright/test');
   });
 });

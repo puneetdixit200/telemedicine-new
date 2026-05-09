@@ -1,7 +1,7 @@
 const path = require('path');
 const dotenv = require('dotenv');
-const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
+const { createOrUpdateAuthUser } = require('../apps/backend/services/supabase-auth.service');
 
 dotenv.config({ path: path.join(__dirname, '..', '.env.local') });
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -202,10 +202,18 @@ function nullableDate(value) {
 }
 
 async function upsertUser({ id, email, password, role, fullName, phone, doctorProfile, patientProfile, ...profile }) {
-  const passwordHash = await bcrypt.hash(password, 12);
+  const authUser = await createOrUpdateAuthUser({
+    email,
+    password,
+    role,
+    fullName,
+    localUserId: id
+  });
+
   const baseUserData = {
     email,
-    passwordHash,
+    passwordHash: null,
+    supabaseAuthUserId: authUser.id,
     role,
     fullName,
     phone,

@@ -5,7 +5,7 @@ import App from '../../apps/frontend/src/App';
 
 export default function LegacyTelemedicineRuntime() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <App />
     </BrowserRouter>
   );

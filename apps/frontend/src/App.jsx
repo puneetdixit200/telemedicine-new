@@ -5482,23 +5482,23 @@ function CallPage() {
   useEffect(() => {
     if (!data?.callConfigEncoded) return undefined;
 
-    const socketScript = document.createElement('script');
-    socketScript.src = '/socket.io/socket.io.js';
-    socketScript.async = false;
+    const supabaseScript = document.createElement('script');
+    supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+    supabaseScript.async = false;
 
     const runtimeScript = document.createElement('script');
-    runtimeScript.src = `/public/js/call.js?v=${Date.now()}`;
+    runtimeScript.src = `/js/call.js?v=${Date.now()}`;
     runtimeScript.async = false;
 
-    socketScript.onload = () => {
+    supabaseScript.onload = () => {
       document.body.appendChild(runtimeScript);
       callScriptRef.current = runtimeScript;
     };
 
-    document.body.appendChild(socketScript);
+    document.body.appendChild(supabaseScript);
 
     return () => {
-      if (socketScript.parentNode) socketScript.parentNode.removeChild(socketScript);
+      if (supabaseScript.parentNode) supabaseScript.parentNode.removeChild(supabaseScript);
       if (runtimeScript.parentNode) runtimeScript.parentNode.removeChild(runtimeScript);
     };
   }, [data?.callConfigEncoded]);

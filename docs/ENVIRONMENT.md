@@ -6,9 +6,10 @@ Use `.env.local.example` as the local template and keep real secrets out of git.
 
 - `NEXT_PUBLIC_SUPABASE_URL`: Supabase project URL from Project Settings.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: browser-safe anon or publishable key from Project API settings.
-- `SUPABASE_SERVICE_ROLE_KEY`: server-only key for privileged route handlers and migrations. Never expose it to the browser.
+- `SUPABASE_SERVICE_ROLE_KEY`: server-only key for Supabase Auth admin operations, privileged route handlers, and migrations. Never expose it to the browser.
 - `DATABASE_URL`: Supabase Postgres connection string for Prisma and compatibility API code.
 - `DIRECT_URL`: optional direct database URL for migrations and local admin tasks.
+- `APP_BASE_URL`: public app URL, for example `https://telemedicine-new.vercel.app`.
 
 ## Required for Azure Blob Storage
 
@@ -17,11 +18,28 @@ Use `.env.local.example` as the local template and keep real secrets out of git.
 - `AZURE_STORAGE_PUBLIC_BASE_URL`: optional CDN/public base URL. Secure reads use SAS URLs by default.
 - `AZURE_UPLOADS_MODE`: use `azure-only` for production.
 
-## Required for App Auth Compatibility
+## Temporary Legacy Compatibility
 
-- `JWT_SECRET`: long random secret used by the compatibility API while auth migrates fully to Supabase Auth.
-- `JWT_EXPIRES_IN`: token lifetime, default `1d`.
-- `NEXT_PUBLIC_SITE_URL`: public app URL used for redirects.
+- `JWT_SECRET`: only needed for legacy local call-server compatibility code. Normal login, registration, logout, and `/api/session` now use Supabase Auth cookies.
+- `JWT_EXPIRES_IN`: legacy token lifetime, default `1d`.
+- `NEXT_PUBLIC_SITE_URL`: optional public app URL used for provider redirects.
+
+## Required in Vercel
+
+Set these for Production and Preview in the Vercel project:
+
+- `DATABASE_URL`
+- `DIRECT_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `AZURE_STORAGE_CONNECTION_STRING`
+- `AZURE_STORAGE_CONTAINER`
+- `AZURE_STORAGE_PUBLIC_BASE_URL`
+- `AZURE_UPLOADS_MODE=azure-only`
+- `APP_BASE_URL`
+- `READINESS_TIMEOUT_MS`
+- Optional AI vars: `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS`, `AI_RATE_LIMIT_PER_MINUTE`.
 
 ## Optional
 

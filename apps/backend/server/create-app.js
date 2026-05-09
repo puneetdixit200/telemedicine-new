@@ -26,19 +26,34 @@ function mountApiRoutes(app) {
   app.use('/documents', documentsRoutes);
 }
 
+function getSupabaseConnectSources() {
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  if (!rawUrl) return [];
+
+  try {
+    const url = new URL(rawUrl);
+    const websocketProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return [`${url.protocol}//${url.host}`, `${websocketProtocol}//${url.host}`];
+  } catch (_error) {
+    return [];
+  }
+}
+
 function createApp() {
   const app = express();
   const backendRoot = path.join(__dirname, '..');
   const repoRoot = path.join(__dirname, '..', '..', '..');
   const isProd = process.env.NODE_ENV === 'production';
   const apiOnly = process.env.NEXT_COMPAT_API_ONLY === 'true';
+  const skipTrustProxy = process.env.NEXT_COMPAT_SKIP_TRUST_PROXY === 'true';
 
   const frontendDistPath = path.join(repoRoot, 'apps', 'frontend', 'dist');
   const frontendSourceIndexPath = path.join(repoRoot, 'apps', 'frontend', 'index.html');
 
   // Trust Azure App Service / Load Balancer proxy headers
-  if (isProd || apiOnly) {
-    app.set('trust proxy', 1);
+  if ((isProd || apiOnly) && !skipTrustProxy) {
+    const { configureTrustProxy } = require('./trust-proxy');
+    configureTrustProxy(app);
   }
 
   // HTTPS redirect in production (Azure/ALB sets x-forwarded-proto)
@@ -73,6 +88,7 @@ function createApp() {
             'https://translate-pa.googleapis.com',
             'https://cdn.gtranslate.net',
             'https://www.gstatic.com',
+            'https://cdn.jsdelivr.net',
             "'sha256-GMDREuNQNJynOQvCXFCl/JLp3JtjQWFHx+V4UdEFI34='"
           ],
           styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
@@ -82,7 +98,8 @@ function createApp() {
             'https://translate.googleapis.com',
             'https://translate-pa.googleapis.com',
             'https://translate.google.com',
-            'https://cdn.gtranslate.net'
+            'https://cdn.gtranslate.net',
+            ...getSupabaseConnectSources()
           ],
           frameSrc: ["'self'", 'https://translate.google.com', 'https://*.google.com', 'https://*.gtranslate.net'],
           fontSrc: ["'self'", 'https:', 'data:'],
@@ -98,7 +115,8 @@ function createApp() {
       windowMs: 60 * 1000,
       limit: 120,
       standardHeaders: true,
-      legacyHeaders: false
+      legacyHeaders: false,
+      validate: skipTrustProxy ? { xForwardedForHeader: false } : undefined
     })
   );
 
@@ -107,6 +125,7 @@ function createApp() {
   app.use(cookieParser());
 
   app.use('/public', express.static(path.join(backendRoot, 'public')));
+  app.use('/js', express.static(path.join(repoRoot, 'public', 'js')));
 
   // Attach logged-in user (if any) from JWT cookie.
   app.use(attachUser);
@@ -137,7 +156,6 @@ function createApp() {
   app.get('*', (req, res, next) => {
     if (
       req.path.startsWith('/api') ||
-      req.path.startsWith('/socket.io') ||
       req.path.startsWith('/documents/') ||
       req.path.startsWith('/assets/')
     ) {

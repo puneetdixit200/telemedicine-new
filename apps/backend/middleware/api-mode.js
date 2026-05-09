@@ -1,5 +1,5 @@
 const API_PATH_RE = /^\/api(?:\/v\d+)?(?:\/|$)/i;
-const SENSITIVE_KEYS = new Set(['passwordHash']);
+const SENSITIVE_KEYS = new Set(['passwordHash', 'supabaseAuthUserId']);
 
 function isApiPath(req) {
   const originalUrl = String(req.originalUrl || '');

@@ -128,23 +128,24 @@ enum SecondOpinionStatus {
 }
 
 model User {
-  id             String   @id @default(uuid())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  email          String   @unique
-  phone          String?
-  fullName       String
-  passwordHash   String
-  role           Role
-  isActive       Boolean  @default(true)
-  lastSeenAt     DateTime?
+  email              String    @unique
+  phone              String?
+  fullName           String
+  passwordHash       String?
+  supabaseAuthUserId String?   @unique
+  role               Role
+  isActive           Boolean   @default(true)
+  lastSeenAt         DateTime?
 
-  gender         String?
-  dateOfBirth    DateTime?
-  address        String?
-  language       String?
-  timeZone       String?
+  gender      String?
+  dateOfBirth DateTime?
+  address     String?
+  language    String?
+  timeZone    String?
 
   patientProfile PatientProfile?
   doctorProfile  DoctorProfile?
@@ -153,9 +154,9 @@ model User {
   asPatientAppointments Appointment[] @relation("appointments_as_patient")
   asDoctorAppointments  Appointment[] @relation("appointments_as_doctor")
 
-  slots          Slot[] @relation("doctor_slots")
+  slots Slot[] @relation("doctor_slots")
 
-  documents      Document[]
+  documents Document[]
 
   doctorReviewsReceived DoctorReview[] @relation("doctor_reviews_received")
   doctorReviewsWritten  DoctorReview[] @relation("doctor_reviews_written")
@@ -171,63 +172,63 @@ model User {
   consentAuditAsPatient ConsentAudit[]    @relation("consent_patient")
   consentAuditActions   ConsentAudit[]    @relation("consent_granted_by")
 
-  vitalsAsPatient                ConsultationVital[]        @relation("vital_patient")
-  recordedVitals                  ConsultationVital[]        @relation("vital_recorded_by")
-  patientQrTokens                 PatientAccessToken[]       @relation("patient_qr_owner")
-  createdQrTokens                 PatientAccessToken[]       @relation("patient_qr_creator")
-  chronicPlans                    ChronicCarePlan[]          @relation("care_plan_patient")
-  createdPlans                    ChronicCarePlan[]          @relation("care_plan_creator")
-  emergencyForPatient             EmergencyEscalation[]      @relation("emergency_patient")
-  emergencyTriggered              EmergencyEscalation[]      @relation("emergency_triggered_by")
-  communitySessionsHosted         CommunitySession[]         @relation("community_host")
-  communitySessionParticipants    CommunitySessionParticipant[] @relation("community_participant_patient")
-  communityParticipantsJoined     CommunitySessionParticipant[] @relation("community_participant_joined_by")
-  externalConsultThreads          ExternalConsultThread[]    @relation("external_thread_patient")
-  externalConsultMessages         ExternalConsultMessage[]   @relation("external_message_actor")
-  voiceNotes                      ConsultationVoiceNote[]    @relation("voice_note_author")
-  secondOpinionAsPatient          SecondOpinionRequest[]     @relation("second_opinion_patient")
-  secondOpinionAsRequester        SecondOpinionRequest[]     @relation("second_opinion_requested_by")
-  secondOpinionAsDoctor           SecondOpinionRequest[]     @relation("second_opinion_doctor")
-  secondOpinionAudits             SecondOpinionAudit[]       @relation("second_opinion_actor")
-  referralsCreated                Referral[]                 @relation("referral_creator")
-  referralsAsPatient              Referral[]                 @relation("referral_patient")
+  vitalsAsPatient              ConsultationVital[]           @relation("vital_patient")
+  recordedVitals               ConsultationVital[]           @relation("vital_recorded_by")
+  patientQrTokens              PatientAccessToken[]          @relation("patient_qr_owner")
+  createdQrTokens              PatientAccessToken[]          @relation("patient_qr_creator")
+  chronicPlans                 ChronicCarePlan[]             @relation("care_plan_patient")
+  createdPlans                 ChronicCarePlan[]             @relation("care_plan_creator")
+  emergencyForPatient          EmergencyEscalation[]         @relation("emergency_patient")
+  emergencyTriggered           EmergencyEscalation[]         @relation("emergency_triggered_by")
+  communitySessionsHosted      CommunitySession[]            @relation("community_host")
+  communitySessionParticipants CommunitySessionParticipant[] @relation("community_participant_patient")
+  communityParticipantsJoined  CommunitySessionParticipant[] @relation("community_participant_joined_by")
+  externalConsultThreads       ExternalConsultThread[]       @relation("external_thread_patient")
+  externalConsultMessages      ExternalConsultMessage[]      @relation("external_message_actor")
+  voiceNotes                   ConsultationVoiceNote[]       @relation("voice_note_author")
+  secondOpinionAsPatient       SecondOpinionRequest[]        @relation("second_opinion_patient")
+  secondOpinionAsRequester     SecondOpinionRequest[]        @relation("second_opinion_requested_by")
+  secondOpinionAsDoctor        SecondOpinionRequest[]        @relation("second_opinion_doctor")
+  secondOpinionAudits          SecondOpinionAudit[]          @relation("second_opinion_actor")
+  referralsCreated             Referral[]                    @relation("referral_creator")
+  referralsAsPatient           Referral[]                    @relation("referral_patient")
 }
 
 model PatientProfile {
-  userId            String  @id
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   chronicConditions String?
   basicHealthInfo   String?
-  abhaId            String? @unique
+  abhaId            String?   @unique
   abhaAddress       String?
   abhaLinkedAt      DateTime?
 }
 
 model DoctorProfile {
-  userId               String  @id
-  user                 User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  specialization       String
-  yearsOfExperience    Int?
-  qualifications       String?
-  clinicName           String?
+  specialization        String
+  yearsOfExperience     Int?
+  qualifications        String?
+  clinicName            String?
   consultationLanguages String?
-  description          String?
-  callEnabled          Boolean @default(false)
-  statusMessage        String?
+  description           String?
+  callEnabled           Boolean @default(false)
+  statusMessage         String?
 }
 
 model Slot {
-  id        String     @id @default(uuid())
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  doctorId  String
-  doctor    User       @relation("doctor_slots", fields: [doctorId], references: [id], onDelete: Cascade)
+  doctorId String
+  doctor   User   @relation("doctor_slots", fields: [doctorId], references: [id], onDelete: Cascade)
 
-  startAt   DateTime
-  status    SlotStatus @default(available)
+  startAt DateTime
+  status  SlotStatus @default(available)
 
   appointment Appointment?
 
@@ -236,54 +237,54 @@ model Slot {
 }
 
 model Appointment {
-  id          String            @id @default(uuid())
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  patientId   String
-  doctorId    String
+  patientId      String
+  doctorId       String
   familyMemberId String?
-  patient     User              @relation("appointments_as_patient", fields: [patientId], references: [id], onDelete: Cascade)
-  doctor      User              @relation("appointments_as_doctor", fields: [doctorId], references: [id], onDelete: Cascade)
-  familyMember FamilyMember?    @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+  patient        User          @relation("appointments_as_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  doctor         User          @relation("appointments_as_doctor", fields: [doctorId], references: [id], onDelete: Cascade)
+  familyMember   FamilyMember? @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
 
   caseRootAppointmentId String?
-  caseRootAppointment Appointment? @relation("appointment_case_root", fields: [caseRootAppointmentId], references: [id], onDelete: SetNull)
-  caseChildren Appointment[] @relation("appointment_case_root")
+  caseRootAppointment   Appointment?  @relation("appointment_case_root", fields: [caseRootAppointmentId], references: [id], onDelete: SetNull)
+  caseChildren          Appointment[] @relation("appointment_case_root")
 
   referredFromAppointmentId String?
-  referredFromAppointment Appointment? @relation("appointment_referred_from", fields: [referredFromAppointmentId], references: [id], onDelete: SetNull)
-  referralChildren Appointment[] @relation("appointment_referred_from")
+  referredFromAppointment   Appointment?  @relation("appointment_referred_from", fields: [referredFromAppointmentId], references: [id], onDelete: SetNull)
+  referralChildren          Appointment[] @relation("appointment_referred_from")
 
-  startAt     DateTime
-  status      AppointmentStatus @default(booked)
-  mode        ConsultationMode  @default(video)
+  startAt DateTime
+  status  AppointmentStatus @default(booked)
+  mode    ConsultationMode  @default(video)
 
   problemDescription String?
   medicationsText    String?
-  triageLevel        TriageLevel       @default(unknown)
-  triageScore        Int               @default(0)
+  triageLevel        TriageLevel @default(unknown)
+  triageScore        Int         @default(0)
 
-  slotId      String?  @unique
-  slot        Slot?    @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  slotId String? @unique
+  slot   Slot?   @relation(fields: [slotId], references: [id], onDelete: SetNull)
 
-  callSession CallSession?
-  prescription Prescription?
-  documents   Document[]
-  review      DoctorReview?
-  reminderJobs ReminderJob[]
-  consentAudits ConsentAudit[]
-  pharmacyOrders PharmacyOrder[]
-  labOrders      LabOrder[]
-  vitals         ConsultationVital[]
-  referralsFrom  Referral[] @relation("referral_from_appointment")
-  referralsTo    Referral[] @relation("referral_to_appointment")
-  externalThread ExternalConsultThread?
-  voiceNotes     ConsultationVoiceNote[]
-  emergencyEscalations EmergencyEscalation[]
-  carePlanCheckIns CarePlanCheckIn[]
+  callSession           CallSession?
+  prescription          Prescription?
+  documents             Document[]
+  review                DoctorReview?
+  reminderJobs          ReminderJob[]
+  consentAudits         ConsentAudit[]
+  pharmacyOrders        PharmacyOrder[]
+  labOrders             LabOrder[]
+  vitals                ConsultationVital[]
+  referralsFrom         Referral[]                    @relation("referral_from_appointment")
+  referralsTo           Referral[]                    @relation("referral_to_appointment")
+  externalThread        ExternalConsultThread?
+  voiceNotes            ConsultationVoiceNote[]
+  emergencyEscalations  EmergencyEscalation[]
+  carePlanCheckIns      CarePlanCheckIn[]
   secondOpinionRequests SecondOpinionRequest[]
-  communityFollowUps CommunitySessionParticipant[] @relation("community_followup_appointment")
+  communityFollowUps    CommunitySessionParticipant[] @relation("community_followup_appointment")
 
   @@index([doctorId, startAt])
   @@index([patientId, startAt])
@@ -294,12 +295,12 @@ model Appointment {
 }
 
 model FamilyMember {
-  id                String   @id @default(uuid())
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  ownerPatientId    String
-  ownerPatient      User     @relation(fields: [ownerPatientId], references: [id], onDelete: Cascade)
+  ownerPatientId String
+  ownerPatient   User   @relation(fields: [ownerPatientId], references: [id], onDelete: Cascade)
 
   fullName          String
   relationToPatient String?
@@ -319,24 +320,24 @@ model FamilyMember {
 }
 
 model CallSession {
-  id            String            @id @default(uuid())
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  appointmentId String            @unique
-  appointment   Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  status        CallSessionStatus @default(ready)
-  startedAt     DateTime?
-  endedAt       DateTime?
+  status    CallSessionStatus @default(ready)
+  startedAt DateTime?
+  endedAt   DateTime?
 }
 
 model Document {
-  id            String   @id @default(uuid())
-  createdAt     DateTime @default(now())
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
 
-  ownerId       String
-  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   familyMemberId String?
   familyMember   FamilyMember? @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
@@ -344,11 +345,11 @@ model Document {
   appointmentId String?
   appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
-  fileName      String
-  contentType   String
-  sizeBytes     Int
+  fileName    String
+  contentType String
+  sizeBytes   Int
 
-  blobName      String
+  blobName String
 
   labOrderReports LabOrder[] @relation("lab_order_report_document")
 
@@ -356,21 +357,21 @@ model Document {
 }
 
 model Prescription {
-  id            String   @id @default(uuid())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  appointmentId String   @unique
+  appointmentId String      @unique
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  diagnosis     String
-  items         Json
-  instructions  String?
-  followUpAt    DateTime?
-  notes         String?
-  pharmacyName  String?
+  diagnosis       String
+  items           Json
+  instructions    String?
+  followUpAt      DateTime?
+  notes           String?
+  pharmacyName    String?
   pharmacyContact String?
-  handoffCode   String?
+  handoffCode     String?
 
   pharmacyOrders PharmacyOrder[]
 
@@ -378,21 +379,21 @@ model Prescription {
 }
 
 model PharmacyOrder {
-  id              String              @id @default(uuid())
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  patientId       String
-  patient         User                @relation("pharmacy_orders_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("pharmacy_orders_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  appointmentId   String?
-  appointment     Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
-  prescriptionId  String?
-  prescription    Prescription?       @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
+  prescriptionId String?
+  prescription   Prescription? @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
 
-  placedById      String
-  placedBy        User                @relation("pharmacy_orders_placed_by", fields: [placedById], references: [id], onDelete: Cascade)
+  placedById String
+  placedBy   User   @relation("pharmacy_orders_placed_by", fields: [placedById], references: [id], onDelete: Cascade)
 
   pharmacyName    String?
   pharmacyContact String?
@@ -409,48 +410,48 @@ model PharmacyOrder {
 }
 
 model LabTestCatalog {
-  id              String   @id @default(uuid())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  code            String   @unique
+  code            String  @unique
   name            String
   category        String?
   sampleType      String?
-  fastingRequired Boolean  @default(false)
+  fastingRequired Boolean @default(false)
   turnaroundHours Int?
   priceCents      Int?
-  isActive        Boolean  @default(true)
+  isActive        Boolean @default(true)
 
-  orderItems      LabOrderItem[]
+  orderItems LabOrderItem[]
 
   @@index([isActive, category])
 }
 
 model LabOrder {
-  id               String       @id @default(uuid())
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  patientId        String
-  patient          User         @relation("lab_orders_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("lab_orders_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  appointmentId    String?
-  appointment      Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
   orderedByDoctorId String?
-  orderedByDoctor   User?       @relation("lab_orders_doctor", fields: [orderedByDoctorId], references: [id], onDelete: SetNull)
+  orderedByDoctor   User?   @relation("lab_orders_doctor", fields: [orderedByDoctorId], references: [id], onDelete: SetNull)
 
-  familyMemberId   String?
-  familyMember     FamilyMember? @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+  familyMemberId String?
+  familyMember   FamilyMember? @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
 
-  reportDocumentId String?      @unique
-  reportDocument   Document?    @relation("lab_order_report_document", fields: [reportDocumentId], references: [id], onDelete: SetNull)
+  reportDocumentId String?   @unique
+  reportDocument   Document? @relation("lab_order_report_document", fields: [reportDocumentId], references: [id], onDelete: SetNull)
 
-  status           LabOrderStatus @default(requested)
-  clinicalNotes    String?
+  status        LabOrderStatus @default(requested)
+  clinicalNotes String?
 
-  items            LabOrderItem[]
+  items LabOrderItem[]
 
   @@index([patientId, createdAt])
   @@index([appointmentId])
@@ -460,66 +461,66 @@ model LabOrder {
 }
 
 model LabOrderItem {
-  id             String         @id @default(uuid())
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  labOrderId     String
-  labOrder       LabOrder       @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+  labOrderId String
+  labOrder   LabOrder @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
 
-  catalogTestId  String?
-  catalogTest    LabTestCatalog? @relation(fields: [catalogTestId], references: [id], onDelete: SetNull)
+  catalogTestId String?
+  catalogTest   LabTestCatalog? @relation(fields: [catalogTestId], references: [id], onDelete: SetNull)
 
-  testName       String
-  sampleType     String?
-  instructions   String?
-  priceCents     Int?
+  testName     String
+  sampleType   String?
+  instructions String?
+  priceCents   Int?
 
   @@index([labOrderId])
   @@index([catalogTestId])
 }
 
 model DoctorReview {
-  id            String   @id @default(uuid())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  appointmentId String   @unique
+  appointmentId String      @unique
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  doctorId      String
-  doctor        User     @relation("doctor_reviews_received", fields: [doctorId], references: [id], onDelete: Cascade)
+  doctorId String
+  doctor   User   @relation("doctor_reviews_received", fields: [doctorId], references: [id], onDelete: Cascade)
 
-  patientId     String
-  patient       User     @relation("doctor_reviews_written", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("doctor_reviews_written", fields: [patientId], references: [id], onDelete: Cascade)
 
-  rating        Int
-  comment       String?
+  rating  Int
+  comment String?
 
   @@index([doctorId, createdAt])
   @@index([patientId, createdAt])
 }
 
 model ReminderJob {
-  id            String          @id @default(uuid())
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   appointmentId String
-  appointment   Appointment     @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  patientId     String
-  patient       User            @relation("patient_reminders", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("patient_reminders", fields: [patientId], references: [id], onDelete: Cascade)
 
-  channel       ReminderChannel @default(sms)
-  sendAt        DateTime
-  templateKey   String
-  payload       Json?
-  status        ReminderStatus  @default(scheduled)
-  attempts      Int             @default(0)
-  sentAt        DateTime?
-  failedAt      DateTime?
-  lastError     String?
+  channel     ReminderChannel @default(sms)
+  sendAt      DateTime
+  templateKey String
+  payload     Json?
+  status      ReminderStatus  @default(scheduled)
+  attempts    Int             @default(0)
+  sentAt      DateTime?
+  failedAt    DateTime?
+  lastError   String?
 
   @@index([status, sendAt])
   @@index([patientId, sendAt])
@@ -527,51 +528,51 @@ model ReminderJob {
 }
 
 model CareSupportLink {
-  id                String   @id @default(uuid())
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  patientId         String
-  patient           User     @relation("care_support_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("care_support_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  createdById       String
-  createdBy         User     @relation("care_support_creator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User   @relation("care_support_creator", fields: [createdById], references: [id], onDelete: Cascade)
 
   helperName        String
   helperPhone       String
   relationToPatient String?
   village           String?
   notes             String?
-  isActive          Boolean  @default(true)
+  isActive          Boolean @default(true)
 
-  consentAudits     ConsentAudit[]
+  consentAudits ConsentAudit[]
 
   @@index([patientId, helperName])
   @@index([patientId, isActive])
 }
 
 model ConsentAudit {
-  id            String          @id @default(uuid())
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  patientId     String
-  patient       User            @relation("consent_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("consent_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  helperId      String?
-  helper        CareSupportLink? @relation(fields: [helperId], references: [id], onDelete: SetNull)
+  helperId String?
+  helper   CareSupportLink? @relation(fields: [helperId], references: [id], onDelete: SetNull)
 
   appointmentId String?
-  appointment   Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
-  scope         DelegationScope @default(appointment)
-  action        String
-  notes         String?
-  isActive      Boolean         @default(true)
-  revokedAt     DateTime?
+  scope     DelegationScope @default(appointment)
+  action    String
+  notes     String?
+  isActive  Boolean         @default(true)
+  revokedAt DateTime?
 
-  grantedById   String
-  grantedBy     User            @relation("consent_granted_by", fields: [grantedById], references: [id], onDelete: Cascade)
+  grantedById String
+  grantedBy   User   @relation("consent_granted_by", fields: [grantedById], references: [id], onDelete: Cascade)
 
   @@index([patientId, createdAt])
   @@index([appointmentId])
@@ -579,28 +580,28 @@ model ConsentAudit {
 }
 
 model ConsultationVital {
-  id             String   @id @default(uuid())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  appointmentId  String
-  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  patientId      String
-  patient        User     @relation("vital_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("vital_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  recordedById   String
-  recordedBy     User     @relation("vital_recorded_by", fields: [recordedById], references: [id], onDelete: Cascade)
+  recordedById String
+  recordedBy   User   @relation("vital_recorded_by", fields: [recordedById], references: [id], onDelete: Cascade)
 
-  source         String?
-  bpSystolic     Int?
-  bpDiastolic    Int?
-  temperatureC   Float?
-  glucoseMgDl    Float?
-  spo2Percent    Int?
-  pulseBpm       Int?
-  weightKg       Float?
-  notes          String?
+  source       String?
+  bpSystolic   Int?
+  bpDiastolic  Int?
+  temperatureC Float?
+  glucoseMgDl  Float?
+  spo2Percent  Int?
+  pulseBpm     Int?
+  weightKg     Float?
+  notes        String?
 
   @@index([appointmentId, createdAt])
   @@index([patientId, createdAt])
@@ -608,24 +609,24 @@ model ConsultationVital {
 }
 
 model Referral {
-  id                   String         @id @default(uuid())
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  fromAppointmentId    String
-  fromAppointment      Appointment    @relation("referral_from_appointment", fields: [fromAppointmentId], references: [id], onDelete: Cascade)
+  fromAppointmentId String
+  fromAppointment   Appointment @relation("referral_from_appointment", fields: [fromAppointmentId], references: [id], onDelete: Cascade)
 
-  toAppointmentId      String?
-  toAppointment        Appointment?   @relation("referral_to_appointment", fields: [toAppointmentId], references: [id], onDelete: SetNull)
+  toAppointmentId String?
+  toAppointment   Appointment? @relation("referral_to_appointment", fields: [toAppointmentId], references: [id], onDelete: SetNull)
 
-  patientId            String
-  patient              User           @relation("referral_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("referral_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  familyMemberId       String?
-  familyMember         FamilyMember?  @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+  familyMemberId String?
+  familyMember   FamilyMember? @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
 
-  createdById          String
-  createdBy            User           @relation("referral_creator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User   @relation("referral_creator", fields: [createdById], references: [id], onDelete: Cascade)
 
   fromDoctorId         String?
   toDoctorId           String?
@@ -641,20 +642,20 @@ model Referral {
 }
 
 model PatientAccessToken {
-  id           String   @id @default(uuid())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  token        String   @unique
-  patientId    String
-  patient      User     @relation("patient_qr_owner", fields: [patientId], references: [id], onDelete: Cascade)
+  token     String @unique
+  patientId String
+  patient   User   @relation("patient_qr_owner", fields: [patientId], references: [id], onDelete: Cascade)
 
-  createdById  String
-  createdBy    User     @relation("patient_qr_creator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User   @relation("patient_qr_creator", fields: [createdById], references: [id], onDelete: Cascade)
 
-  label        String?
-  expiresAt    DateTime
-  revokedAt    DateTime?
+  label          String?
+  expiresAt      DateTime
+  revokedAt      DateTime?
   lastAccessedAt DateTime?
 
   @@index([patientId, expiresAt])
@@ -662,67 +663,67 @@ model PatientAccessToken {
 }
 
 model ChronicCarePlan {
-  id                String                @id @default(uuid())
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  patientId         String
-  patient           User                  @relation("care_plan_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("care_plan_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  createdById       String
-  createdBy         User                  @relation("care_plan_creator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User   @relation("care_plan_creator", fields: [createdById], references: [id], onDelete: Cascade)
 
-  familyMemberId    String?
-  familyMember      FamilyMember?         @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+  familyMemberId String?
+  familyMember   FamilyMember? @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
 
-  condition         String
-  status            ChronicCarePlanStatus @default(active)
-  startAt           DateTime              @default(now())
-  nextCheckInAt     DateTime?
-  checkInIntervalDays Int                 @default(30)
-  milestones        Json?
-  notes             String?
+  condition           String
+  status              ChronicCarePlanStatus @default(active)
+  startAt             DateTime              @default(now())
+  nextCheckInAt       DateTime?
+  checkInIntervalDays Int                   @default(30)
+  milestones          Json?
+  notes               String?
 
-  checkIns          CarePlanCheckIn[]
+  checkIns CarePlanCheckIn[]
 
   @@index([patientId, status, nextCheckInAt])
   @@index([familyMemberId])
 }
 
 model CarePlanCheckIn {
-  id              String    @id @default(uuid())
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  planId          String
-  plan            ChronicCarePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  planId String
+  plan   ChronicCarePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  appointmentId   String?
-  appointment     Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
-  scheduledAt     DateTime
-  completedAt     DateTime?
-  status          String    @default("scheduled")
-  notes           String?
-  vitalsSnapshot  Json?
+  scheduledAt    DateTime
+  completedAt    DateTime?
+  status         String    @default("scheduled")
+  notes          String?
+  vitalsSnapshot Json?
 
   @@index([planId, scheduledAt])
   @@index([appointmentId])
 }
 
 model EmergencyEscalation {
-  id             String          @id @default(uuid())
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  patientId      String
-  patient        User            @relation("emergency_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("emergency_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  triggeredById  String
-  triggeredBy    User            @relation("emergency_triggered_by", fields: [triggeredById], references: [id], onDelete: Cascade)
+  triggeredById String
+  triggeredBy   User   @relation("emergency_triggered_by", fields: [triggeredById], references: [id], onDelete: Cascade)
 
-  appointmentId  String?
-  appointment    Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
   locationLat    Float?
   locationLng    Float?
@@ -738,47 +739,47 @@ model EmergencyEscalation {
 }
 
 model CommunitySession {
-  id            String                 @id @default(uuid())
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  doctorId      String
-  doctor        User                   @relation("community_host", fields: [doctorId], references: [id], onDelete: Cascade)
+  doctorId String
+  doctor   User   @relation("community_host", fields: [doctorId], references: [id], onDelete: Cascade)
 
-  title         String
-  village       String?
-  startsAt      DateTime
-  endsAt        DateTime?
-  status        CommunitySessionStatus @default(scheduled)
-  notes         String?
+  title    String
+  village  String?
+  startsAt DateTime
+  endsAt   DateTime?
+  status   CommunitySessionStatus @default(scheduled)
+  notes    String?
 
-  participants  CommunitySessionParticipant[]
+  participants CommunitySessionParticipant[]
 
   @@index([doctorId, startsAt])
   @@index([status, startsAt])
 }
 
 model CommunitySessionParticipant {
-  id                   String   @id @default(uuid())
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  sessionId            String
-  session              CommunitySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId String
+  session   CommunitySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
-  patientId            String
-  patient              User     @relation("community_participant_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("community_participant_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  familyMemberId       String?
-  familyMember         FamilyMember? @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+  familyMemberId String?
+  familyMember   FamilyMember? @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
 
-  joinedByUserId       String?
-  joinedByUser         User?    @relation("community_participant_joined_by", fields: [joinedByUserId], references: [id], onDelete: SetNull)
+  joinedByUserId String?
+  joinedByUser   User?   @relation("community_participant_joined_by", fields: [joinedByUserId], references: [id], onDelete: SetNull)
 
   followUpAppointmentId String?
-  followUpAppointment  Appointment? @relation("community_followup_appointment", fields: [followUpAppointmentId], references: [id], onDelete: SetNull)
+  followUpAppointment   Appointment? @relation("community_followup_appointment", fields: [followUpAppointmentId], references: [id], onDelete: SetNull)
 
-  notes                String?
+  notes String?
 
   @@index([sessionId, createdAt])
   @@index([patientId])
@@ -786,38 +787,38 @@ model CommunitySessionParticipant {
 }
 
 model ExternalConsultThread {
-  id            String                @id @default(uuid())
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  appointmentId String                @unique
-  appointment   Appointment           @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  patientId     String
-  patient       User                  @relation("external_thread_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("external_thread_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
   channel       ExternalConsultChannel @default(whatsapp)
   contactPhone  String?
   lastMessageAt DateTime?
 
-  messages      ExternalConsultMessage[]
+  messages ExternalConsultMessage[]
 
   @@index([patientId, lastMessageAt])
 }
 
 model ExternalConsultMessage {
-  id             String                   @id @default(uuid())
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  threadId       String
-  thread         ExternalConsultThread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  threadId String
+  thread   ExternalConsultThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  direction      ExternalMessageDirection
-  body           String
+  direction ExternalMessageDirection
+  body      String
 
-  syncedById     String?
-  syncedBy       User?                    @relation("external_message_actor", fields: [syncedById], references: [id], onDelete: SetNull)
+  syncedById String?
+  syncedBy   User?   @relation("external_message_actor", fields: [syncedById], references: [id], onDelete: SetNull)
 
   deliveryStatus String?
   metadata       Json?
@@ -827,17 +828,17 @@ model ExternalConsultMessage {
 }
 
 model ConsultationVoiceNote {
-  id             String   @id @default(uuid())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  appointmentId  String
-  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  doctorId       String
-  doctor         User     @relation("voice_note_author", fields: [doctorId], references: [id], onDelete: Cascade)
+  doctorId String
+  doctor   User   @relation("voice_note_author", fields: [doctorId], references: [id], onDelete: Cascade)
 
-  language       String   @default("en")
+  language       String  @default("en")
   transcriptText String
   summaryText    String?
   audioBlobName  String?
@@ -848,21 +849,21 @@ model ConsultationVoiceNote {
 }
 
 model SecondOpinionRequest {
-  id               String              @id @default(uuid())
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  patientId        String
-  patient          User                @relation("second_opinion_patient", fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User   @relation("second_opinion_patient", fields: [patientId], references: [id], onDelete: Cascade)
 
-  requestedById    String
-  requestedBy      User                @relation("second_opinion_requested_by", fields: [requestedById], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User   @relation("second_opinion_requested_by", fields: [requestedById], references: [id], onDelete: Cascade)
 
-  appointmentId    String
-  appointment      Appointment         @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  secondDoctorId   String?
-  secondDoctor     User?               @relation("second_opinion_doctor", fields: [secondDoctorId], references: [id], onDelete: SetNull)
+  secondDoctorId String?
+  secondDoctor   User?   @relation("second_opinion_doctor", fields: [secondDoctorId], references: [id], onDelete: SetNull)
 
   status           SecondOpinionStatus @default(requested)
   consentNote      String?
@@ -870,7 +871,7 @@ model SecondOpinionRequest {
   reviewSummary    String?
   reviewedAt       DateTime?
 
-  audits           SecondOpinionAudit[]
+  audits SecondOpinionAudit[]
 
   @@index([patientId, status, createdAt])
   @@index([appointmentId])
@@ -878,18 +879,18 @@ model SecondOpinionRequest {
 }
 
 model SecondOpinionAudit {
-  id         String   @id @default(uuid())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  requestId  String
-  request    SecondOpinionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId String
+  request   SecondOpinionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  actorId    String
-  actor      User     @relation("second_opinion_actor", fields: [actorId], references: [id], onDelete: Cascade)
+  actorId String
+  actor   User   @relation("second_opinion_actor", fields: [actorId], references: [id], onDelete: Cascade)
 
-  action     String
-  notes      String?
+  action String
+  notes  String?
 
   @@index([requestId, createdAt])
   @@index([actorId, createdAt])

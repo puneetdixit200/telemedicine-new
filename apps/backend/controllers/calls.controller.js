@@ -1,6 +1,6 @@
-const jwt = require('jsonwebtoken');
 const { prisma } = require('../models/db');
 const { getAppointmentPresence } = require('../services/presence.service');
+const { getSupabaseAnonKey, getSupabaseUrl } = require('../services/supabase-auth.service');
 
 async function ensureAppointmentAccess(appointmentId, user) {
   const appt = await prisma.appointment.findUnique({
@@ -76,14 +76,20 @@ const callsController = {
 
       const history = await loadPatientHistory(appt);
 
-      // Short-lived token for Socket.IO auth (cookie is HttpOnly).
-      const socketToken = jwt.sign({ sub: req.user.id, role: req.user.role }, process.env.JWT_SECRET, {
-        expiresIn: '15m'
-      });
+      const supabaseUrl = getSupabaseUrl();
+      const supabaseAnonKey = getSupabaseAnonKey();
+      if (!supabaseUrl || !supabaseAnonKey) {
+        return res.status(500).render('dashboard', {
+          user: req.user,
+          message: 'Realtime calling is not configured.'
+        });
+      }
 
       const callConfigJson = JSON.stringify({
         appointmentId: appt.id,
-        socketToken,
+        supabaseUrl,
+        supabaseAnonKey,
+        realtimeTopic: `call:${appt.id}`,
         userRole: req.user.role,
         iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
         defaultMode: appt.mode
@@ -95,7 +101,6 @@ const callsController = {
         appointment: appt,
         presence,
         history,
-        socketToken,
         iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
         callConfigJson,
         callConfigEncoded

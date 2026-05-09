@@ -7,6 +7,7 @@ describe('session serialization', () => {
       email: 'patient@example.com',
       fullName: 'Patient Example',
       passwordHash: 'secret-hash',
+      supabaseAuthUserId: 'auth-user-1',
       role: 'patient',
       patientProfile: { userId: 'user-1' },
       doctorProfile: null
@@ -18,5 +19,6 @@ describe('session serialization', () => {
       role: 'patient'
     });
     expect(user).not.toHaveProperty('passwordHash');
+    expect(user).not.toHaveProperty('supabaseAuthUserId');
   });
 });

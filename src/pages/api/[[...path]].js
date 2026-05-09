@@ -12,6 +12,7 @@ let compatibilityApp;
 function getCompatibilityApp() {
   if (!compatibilityApp) {
     process.env.NEXT_COMPAT_API_ONLY = 'true';
+    process.env.NEXT_COMPAT_SKIP_TRUST_PROXY = 'true';
     compatibilityApp = createApp();
   }
   return compatibilityApp;

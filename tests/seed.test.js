@@ -33,6 +33,8 @@ describe('demo seed data contract', () => {
     const seed = readText('prisma/seed.js');
 
     expect(seed).toContain('prisma.user.upsert');
+    expect(seed).toContain('createOrUpdateAuthUser');
+    expect(seed).toContain('supabaseAuthUserId');
     expect(seed).toContain('prisma.slot.upsert');
     expect(seed).toContain('prisma.appointment.upsert');
     expect(seed).toContain('skipDuplicates: true');

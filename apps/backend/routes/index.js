@@ -18,7 +18,7 @@ const medicinesRoutes = require('./medicines.routes');
 function serializeSessionUser(user) {
   if (!user) return null;
 
-  const { passwordHash: _passwordHash, ...safeUser } = user;
+  const { passwordHash: _passwordHash, supabaseAuthUserId: _supabaseAuthUserId, ...safeUser } = user;
   return safeUser;
 }
 

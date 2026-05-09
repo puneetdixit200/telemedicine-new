@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { prisma } = require('../models/db');
 const { isRecentlyOnline } = require('../services/presence.service');
+const { getAuthenticatedSupabaseUser, signOut } = require('../services/supabase-auth.service');
 const { sendApiError } = require('./api-response');
 
 // Only set Secure cookie flag when HTTPS is available
@@ -40,6 +41,57 @@ function clearSessionLocationCookie(res) {
 }
 
 async function attachUser(req, res, next) {
+  try {
+    const authUser = await getAuthenticatedSupabaseUser(req, res);
+    if (!authUser) {
+      req.user = null;
+      return next();
+    }
+
+    const include = { patientProfile: true, doctorProfile: true };
+    let user = await prisma.user.findUnique({
+      where: { supabaseAuthUserId: authUser.id },
+      include
+    });
+
+    if (!user && authUser.email) {
+      user = await prisma.user.findUnique({
+        where: { email: String(authUser.email).toLowerCase() },
+        include
+      });
+
+      if (user && !user.supabaseAuthUserId) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { supabaseAuthUserId: authUser.id },
+          include
+        });
+      }
+    }
+
+    if (!user || !user.isActive) {
+      req.user = null;
+      await signOut(req, res).catch(() => {});
+      res.clearCookie('token');
+      return next();
+    }
+
+    user.isPresenceOnline = isRecentlyOnline(user.lastSeenAt);
+    user.isCallOnline =
+      user.role === 'doctor'
+        ? Boolean(user.doctorProfile?.callEnabled) && user.isPresenceOnline
+        : user.isPresenceOnline;
+
+    req.user = user;
+    return next();
+  } catch (e) {
+    req.user = null;
+    res.clearCookie('token');
+    return next();
+  }
+}
+
+async function attachLegacyJwtUser(req, res, next) {
   try {
     const token = req.cookies.token;
     if (!token) {
@@ -91,6 +143,7 @@ function roleRequired(...roles) {
 
 module.exports = {
   attachUser,
+  attachLegacyJwtUser,
   authRequired,
   roleRequired,
   signToken,
