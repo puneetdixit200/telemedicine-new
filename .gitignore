@@ -1,4 +1,8 @@
 node_modules
+.next
+.next-run-logs/
+.superpowers/
+supabase/.temp/
 .env
 .env.local
 .env.development

@@ -1,0 +1,11 @@
+{
+  "name": "Sanctuary Health",
+  "short_name": "Sanctuary",
+  "description": "Rural-ready telemedicine with offline-friendly workflows",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f5f7",
+  "theme_color": "#1f6f5f",
+  "lang": "en",
+  "scope": "/"
+}

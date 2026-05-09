@@ -1,8 +1,20 @@
 const API_PATH_RE = /^\/api(?:\/v\d+)?(?:\/|$)/i;
+const SENSITIVE_KEYS = new Set(['passwordHash']);
 
 function isApiPath(req) {
   const originalUrl = String(req.originalUrl || '');
   return API_PATH_RE.test(originalUrl);
+}
+
+function sanitizeApiPayload(value) {
+  if (Array.isArray(value)) return value.map((entry) => sanitizeApiPayload(entry));
+  if (!value || typeof value !== 'object' || value instanceof Date) return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !SENSITIVE_KEYS.has(key))
+      .map(([key, entry]) => [key, sanitizeApiPayload(entry)])
+  );
 }
 
 function enableApiMode(req, res, next) {
@@ -14,7 +26,7 @@ function enableApiMode(req, res, next) {
     if (typeof locals === 'function') {
       return res.json({ ok: res.statusCode < 400, view });
     }
-    return res.json({ ok: res.statusCode < 400, view, ...locals });
+    return res.json(sanitizeApiPayload({ ok: res.statusCode < 400, view, ...locals }));
   };
 
   res.redirect = (statusOrUrl, maybeUrl) => {
@@ -33,4 +45,4 @@ function enableApiMode(req, res, next) {
   return next();
 }
 
-module.exports = { enableApiMode, isApiPath };
+module.exports = { enableApiMode, isApiPath, sanitizeApiPayload };

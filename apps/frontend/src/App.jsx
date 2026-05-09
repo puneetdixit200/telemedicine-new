@@ -1244,11 +1244,11 @@ function LoginPage() {
 
           setLocationNotice('Location captured successfully.');
         } catch (locationError) {
-          await apiRequest('/api/auth/logout', { method: 'POST' });
-          await refreshSession();
-          setLocationNotice('');
-          setError(locationError.message || 'Unable to capture location. Please sign in again.');
-          return;
+          setLocationNotice(
+            locationError.message
+              ? `Signed in. Location capture skipped: ${locationError.message}`
+              : 'Signed in. Location capture skipped. You can continue without sharing location.'
+          );
         }
       }
 

@@ -15,12 +15,19 @@ const healthRoutes = require('./health.routes');
 const innovationRoutes = require('./innovation.routes');
 const medicinesRoutes = require('./medicines.routes');
 
+function serializeSessionUser(user) {
+  if (!user) return null;
+
+  const { passwordHash: _passwordHash, ...safeUser } = user;
+  return safeUser;
+}
+
 function registerApiRoutes(apiRouter) {
   apiRouter.use('/health', healthRoutes);
   apiRouter.get('/session', (req, res) =>
     res.json({
       ok: true,
-      user: req.user || null,
+      user: serializeSessionUser(req.user),
       sessionLocation: req.cookies?.sessionLocation || null,
       requestId: req.requestId || null
     })
@@ -43,4 +50,4 @@ function registerApiRoutes(apiRouter) {
   apiRouter.use('/medicines', medicinesRoutes);
 }
 
-module.exports = { registerApiRoutes, documentsRoutes };
+module.exports = { registerApiRoutes, documentsRoutes, serializeSessionUser };

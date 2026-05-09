@@ -3,7 +3,7 @@ const { prisma } = require('../models/db');
 
 const router = express.Router();
 const SERVICE_NAME = String(process.env.SERVICE_NAME || 'telemedicine-rural-api');
-const READINESS_TIMEOUT_MS = Math.max(100, Number(process.env.READINESS_TIMEOUT_MS || 1500));
+const READINESS_TIMEOUT_MS = Math.max(100, Number(process.env.READINESS_TIMEOUT_MS || 5000));
 
 function nowIso() {
   return new Date().toISOString();

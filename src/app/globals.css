@@ -1,0 +1,5 @@
+@import '../../apps/frontend/src/styles.css';
+
+body {
+  min-height: 100vh;
+}

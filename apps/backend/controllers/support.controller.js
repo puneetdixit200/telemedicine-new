@@ -118,7 +118,7 @@ const supportController = {
             OR: helperPhoneWhere
           },
           include: {
-            ownerPatient: { select: { id: true, fullName: true } }
+            patient: { select: { id: true, fullName: true } }
           },
           orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
           take: 100

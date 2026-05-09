@@ -31,12 +31,13 @@ function createApp() {
   const backendRoot = path.join(__dirname, '..');
   const repoRoot = path.join(__dirname, '..', '..', '..');
   const isProd = process.env.NODE_ENV === 'production';
+  const apiOnly = process.env.NEXT_COMPAT_API_ONLY === 'true';
 
   const frontendDistPath = path.join(repoRoot, 'apps', 'frontend', 'dist');
   const frontendSourceIndexPath = path.join(repoRoot, 'apps', 'frontend', 'index.html');
 
   // Trust Azure App Service / Load Balancer proxy headers
-  if (isProd) {
+  if (isProd || apiOnly) {
     app.set('trust proxy', 1);
   }
 
@@ -111,6 +112,11 @@ function createApp() {
   app.use(attachUser);
 
   mountApiRoutes(app);
+
+  if (apiOnly) {
+    app.use(errorHandler);
+    return app;
+  }
 
   app.use(
     express.static(frontendDistPath, {
