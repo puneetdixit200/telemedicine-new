@@ -13,6 +13,17 @@ function isMissingDoctorReviewTable(error) {
   );
 }
 
+function getIstDateKey(value) {
+  const parts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date(value));
+  const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${lookup.year}-${lookup.month}-${lookup.day}`;
+}
+
 function normalizePhone(value) {
   return String(value || '')
     .replace(/[^0-9]/g, '')
@@ -814,10 +825,10 @@ const appointmentsController = {
       };
 
       const now = Date.now();
-      const next14Days = now + 14 * 24 * 60 * 60 * 1000;
+const next14Days = now + 14 * 24 * 60 * 60 * 1000;
 
       for (let i = 13; i >= 0; i -= 1) {
-        const day = new Date(now - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const day = getIstDateKey(now - i * 24 * 60 * 60 * 1000);
         dailyTotals[day] = 0;
       }
 
@@ -826,7 +837,7 @@ const appointmentsController = {
         modeCounts[appointment.mode] = (modeCounts[appointment.mode] || 0) + 1;
         uniquePatients.add(appointment.patientId);
 
-        const dayKey = new Date(appointment.startAt).toISOString().slice(0, 10);
+        const dayKey = getIstDateKey(appointment.startAt);
         if (Object.prototype.hasOwnProperty.call(dailyTotals, dayKey)) {
           dailyTotals[dayKey] += 1;
         }

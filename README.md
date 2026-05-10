@@ -1,10 +1,10 @@
 ﻿# Telemedicine Rural App
 
-Production-style telemedicine platform built with Express, Prisma, PostgreSQL, Socket.IO, and a React SPA.
+Production-style telemedicine platform built with Next.js, Express compatibility APIs, Prisma, Supabase Postgres/Auth/Realtime, Azure Blob Storage, and a React SPA.
 
 This repository contains:
 - Role-based telemedicine workflows for patients, doctors, help workers, and admins
-- Real-time consultation support (video/audio/text signaling and chat)
+- Real-time consultation support (video/audio/text signaling, chat, and shared call-end events)
 - Prescription, pharmacy, lab, reminders, and document workflows
 - AI-assisted draft tooling with review-required policy
 - Azure-ready deployment flow and Capacitor mobile wrapper scaffolding
@@ -20,14 +20,14 @@ The system is designed for mixed-connectivity and rural-first usage patterns:
 
 ## 2. Technology Stack
 
-- Backend: Node.js, Express (CommonJS)
-- Database: PostgreSQL via Prisma ORM
-- Frontend: React + React Router + Vite
-- Realtime: Socket.IO
+- Runtime: Next.js with Express compatibility APIs
+- Database: Supabase Postgres via Prisma ORM
+- Frontend: React + React Router inside a Next client boundary
+- Realtime: Supabase Realtime for consultation signaling and chat
 - Storage: Azure Blob Storage (with configurable local fallback)
-- Auth: Cookie-based JWT session
+- Auth: Supabase Auth cookies plus app-local role/profile rows
 - Security: Helmet, rate limiting, role authorization
-- Testing: Jest + Supertest
+- Testing: Jest, Supertest, and Playwright E2E
 
 ## 3. Repository Layout
 
@@ -105,6 +105,7 @@ Reference file: `.env.example`
 ### 6.3 Storage
 
 - `AZURE_STORAGE_CONNECTION_STRING`
+- `AZURE_STORAGE_ACCOUNT_NAME` and `AZURE_STORAGE_ACCOUNT_KEY` as an alternative to a full connection string
 - `AZURE_STORAGE_CONTAINER` (default `patient-documents`)
 - `AZURE_STORAGE_PUBLIC_BASE_URL`
 - `AZURE_UPLOADS_MODE` (`azure-only`, `local-only`, etc.)
@@ -114,6 +115,9 @@ Reference file: `.env.example`
 - `OLLAMA_BASE_URL`
 - `OLLAMA_MODEL` (default `llama3.1:8b`)
 - `OLLAMA_TIMEOUT_MS` (default `45000`)
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_MODEL` (default `openai/gpt-oss-120b:free`)
+- `OPENROUTER_TIMEOUT_MS` (default `45000`)
 - `AI_RATE_LIMIT_PER_MINUTE` (default `40`)
 
 ### 6.5 Operations
@@ -132,12 +136,12 @@ Reference file: `.env.example`
 
 After `npm run db:seed`:
 
-- Patient: `patient1@example.com` / `Password123!`
-- Patient: `patient2@example.com` / `Password123!`
-- Doctor: `doctor1@example.com` / `Password123!`
-- Doctor: `doctor2@example.com` / `Password123!`
-- Admin: `admin@example.com` / `Password123!`
-- Help worker: `helper1@example.com` / `Password123!`
+- Patient: `patient.asha@example.com` / `Demo@12345`
+- Patient: `patient.ravi@example.com` / `Demo@12345`
+- Doctor: `doctor.asha@example.com` / `Demo@12345`
+- Doctor: `doctor.ravi@example.com` / `Demo@12345`
+- Admin: `admin.demo@example.com` / `Demo@12345`
+- Help worker: `helper.meena@example.com` / `Demo@12345`
 
 ## 8. NPM Scripts
 
@@ -146,7 +150,7 @@ After `npm run db:seed`:
 | `npm run dev` | Start backend app with nodemon |
 | `npm start` | Production startup (`prestart` + server) |
 | `npm run start:azure` | Explicit Azure startup script |
-| `npm run frontend:dev` | Start Vite dev server |
+| `npm run frontend:dev` | Legacy Vite dev server for the frontend package |
 | `npm run frontend:build` | Build frontend bundle |
 | `npm run frontend:preview` | Preview built frontend |
 | `npm run prisma:generate` | Generate Prisma client |
@@ -166,7 +170,7 @@ After `npm run db:seed`:
 Core startup path:
 - `app.js` initializes env, telemetry, optional reminder cron, and server lifecycle
 - `apps/backend/server/create-app.js` wires middleware, APIs, static assets, and SPA fallback
-- `apps/backend/server/create-server.js` wraps HTTP server + Socket.IO initialization
+- `apps/backend/server/create-server.js` wraps the compatibility HTTP server for local/custom-server runs
 
 Key middleware:
 - Request context and request ID
@@ -349,10 +353,11 @@ Current scope is wrapper readiness for the web app bundle (not native feature pa
 ### 18.3 Missing Prisma client
 - Run `npm run prisma:generate`
 
-### 18.4 Socket or call connection issues in production
+### 18.4 Realtime or call connection issues in production
 - Verify `APP_BASE_URL` is set to correct HTTPS origins
-- Ensure WebSockets are enabled in host platform
+- Confirm `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are available to the browser
+- Confirm Supabase Realtime is reachable from the deployed app
 
 ### 18.5 AI endpoint fallback behavior
-- If `OLLAMA_BASE_URL` is unset/unreachable, AI endpoints use fallback-safe behavior
+- If `OPENROUTER_API_KEY` and `OLLAMA_BASE_URL` are unset/unreachable, AI endpoints use fallback-safe behavior
 - Check API response metadata for fallback indicators

@@ -93,8 +93,9 @@ Needs:
 ## 6.4 Consultation and call workflows
 
 - Call join/end controls
-- Socket-based signaling
+- Supabase Realtime signaling
 - Chat fallback path
+- Ending the call from one participant immediately exits the other participant
 - Connection-aware usability support
 
 ## 6.5 Prescription and medicine workflows
@@ -168,6 +169,8 @@ Needs:
 ## 8.3 Mobile behavior requirements
 
 - Core actions must remain visible and tap-friendly
+- Buttons and primary controls must keep a minimum 44px mobile tap target
+- Data-heavy screens should collapse to one-column cards or scrollable table wrappers on narrow viewports
 - Bottom-fixed utility widgets must not conflict with mobile dock
 - Connectivity/translation fixed widgets are hidden on mobile where needed
 

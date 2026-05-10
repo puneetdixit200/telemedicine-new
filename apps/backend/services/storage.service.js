@@ -27,17 +27,42 @@ function allowLocalReadFallback() {
 }
 
 function requireConnString() {
-  const cs = process.env.AZURE_STORAGE_CONNECTION_STRING;
+  const cs = getAzureConnectionString();
   if (!cs) {
-    const err = new Error('Azure storage is not configured (AZURE_STORAGE_CONNECTION_STRING missing).');
+    const err = new Error(
+      'Azure storage is not configured. Set AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT_NAME/AZURE_STORAGE_ACCOUNT_KEY.'
+    );
     err.status = 500;
     throw err;
   }
   return cs;
 }
 
+function isPlaceholderSecret(value) {
+  return /rotate_me|replace-|your-|changeme/i.test(String(value || ''));
+}
+
+function buildConnectionStringFromAccountKey() {
+  const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME || process.env.AZURE_STORAGE_ACCOUNT || '';
+  const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY || process.env.AZURE_STORAGE_KEY || '';
+  if (!accountName || !accountKey || isPlaceholderSecret(accountName) || isPlaceholderSecret(accountKey)) return '';
+  const endpointSuffix = process.env.AZURE_STORAGE_ENDPOINT_SUFFIX || 'core.windows.net';
+  return [
+    'DefaultEndpointsProtocol=https',
+    `AccountName=${accountName}`,
+    `AccountKey=${accountKey}`,
+    `EndpointSuffix=${endpointSuffix}`
+  ].join(';');
+}
+
+function getAzureConnectionString() {
+  const configured = String(process.env.AZURE_STORAGE_CONNECTION_STRING || '').trim();
+  if (configured && !isPlaceholderSecret(configured)) return configured;
+  return buildConnectionStringFromAccountKey();
+}
+
 function hasUsableAzureConnectionString() {
-  const cs = process.env.AZURE_STORAGE_CONNECTION_STRING || '';
+  const cs = getAzureConnectionString();
   if (!cs.trim()) return false;
   try {
     const parsed = parseAccountFromConnectionString(cs);
@@ -103,7 +128,9 @@ async function uploadBuffer({ blobName, buffer, contentType }) {
   const azureReady = hasUsableAzureConnectionString();
 
   if (mode !== 'local-only' && !azureReady) {
-    const err = new Error('Azure-only upload mode is enabled, but Azure storage is not configured.');
+    const err = new Error(
+      'Azure upload is not configured. Add a real AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT_NAME/AZURE_STORAGE_ACCOUNT_KEY, or set AZURE_UPLOADS_MODE=local-only for local testing.'
+    );
     err.status = 500;
     throw err;
   }
@@ -129,7 +156,7 @@ function getReadSasUrl({ blobName, expiresInMinutes = 10, contentDisposition, co
     }
 
     const err = new Error(
-      'Azure storage is not configured for secure reads in production. Set AZURE_STORAGE_CONNECTION_STRING.'
+      'Azure storage is not configured for secure reads in production. Set AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT_NAME/AZURE_STORAGE_ACCOUNT_KEY.'
     );
     err.status = 500;
     throw err;
@@ -169,5 +196,6 @@ module.exports = {
   localUploadsRoot,
   getUploadsMode,
   isAzureConfigured,
-  assertAzureReady
+  assertAzureReady,
+  getAzureConnectionString
 };

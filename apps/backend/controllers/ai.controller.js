@@ -2,10 +2,13 @@ const fs = require('fs');
 const { prisma } = require('../models/db');
 const { getLocalFilePath, getReadSasUrl } = require('../services/storage.service');
 const {
+  aiGenerate,
+  getAiModel,
+  getAiProviderInfo,
   getOllamaBaseUrl,
   getOllamaModel,
+  isAiConfigured,
   isOllamaConfigured,
-  ollamaGenerate,
   tryParseJson
 } = require('../services/ollama.service');
 const {
@@ -28,6 +31,20 @@ const AI_SYSTEM_PROMPT = [
   'Do not include personally identifying details beyond what is necessary for the requested draft.',
   'All outputs are drafts for clinician/patient review, not autonomous decisions.'
 ].join(' ');
+
+function formatIstDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'unknown time';
+  return `${date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  })} IST`;
+}
 
 function redactSensitiveText(value) {
   return String(value || '')
@@ -87,20 +104,20 @@ function getReminderTemplate(language, patientName, doctorName, startLabel) {
   const lang = normalizeLanguageKey(language);
   if (lang === 'hindi') {
     return {
-      message: `Namaste ${patientName}, Dr. ${doctorName} ke saath aapka telemedicine visit ${startLabel} UTC par hai. Kripya phone ready rakhein.`,
+      message: `Namaste ${patientName}, Dr. ${doctorName} ke saath aapka telemedicine visit ${startLabel} par hai. Kripya phone ready rakhein.`,
       alternatives: [
-        `${patientName}, appointment ${startLabel} UTC par shuru hogi.`,
-        `Yaad-dihani: Dr. ${doctorName} ke saath consult ${startLabel} UTC.`
+        `${patientName}, appointment ${startLabel} par shuru hogi.`,
+        `Yaad-dihani: Dr. ${doctorName} ke saath consult ${startLabel}.`
       ],
       scheduleHint: 'Yatha-sambhav 24 ghante pehle aur 30 minute pehle reminder bhejein.'
     };
   }
 
   return {
-    message: `Reminder: ${patientName}, your telemedicine visit with Dr. ${doctorName} is at ${startLabel} UTC. Reply if you need help joining.`,
+    message: `Reminder: ${patientName}, your telemedicine visit with Dr. ${doctorName} is at ${startLabel}. Reply if you need help joining.`,
     alternatives: [
-      `${patientName}, your appointment starts at ${startLabel} UTC. Please keep your phone ready.`,
-      `Care reminder: visit with Dr. ${doctorName} at ${startLabel} UTC. Reach out if support is needed.`
+      `${patientName}, your appointment starts at ${startLabel}. Please keep your phone ready.`,
+      `Care reminder: visit with Dr. ${doctorName} at ${startLabel}. Reach out if support is needed.`
     ],
     scheduleHint: 'Send one reminder 24h before and one 30m before appointment when possible.'
   };
@@ -444,7 +461,7 @@ function selectSourceSnippets(text, question) {
 async function runJsonTask({ taskPrompt, fallback, maxTokens = 900 }) {
   const safePrompt = redactSensitiveText(taskPrompt);
 
-  if (!isOllamaConfigured()) {
+  if (!isAiConfigured()) {
     return {
       data: redactSensitiveData(fallback),
       fallbackUsed: true,
@@ -453,7 +470,7 @@ async function runJsonTask({ taskPrompt, fallback, maxTokens = 900 }) {
   }
 
   try {
-    const text = await ollamaGenerate({
+    const text = await aiGenerate({
       systemPrompt: AI_SYSTEM_PROMPT,
       userPrompt: safePrompt,
       temperature: 0.2,
@@ -465,7 +482,7 @@ async function runJsonTask({ taskPrompt, fallback, maxTokens = 900 }) {
       return {
         data: redactSensitiveData(fallback),
         fallbackUsed: true,
-        model: getOllamaModel(),
+        model: getAiModel(),
         raw: text
       };
     }
@@ -473,7 +490,7 @@ async function runJsonTask({ taskPrompt, fallback, maxTokens = 900 }) {
     return {
       data: redactSensitiveData(parsed),
       fallbackUsed: false,
-      model: getOllamaModel(),
+      model: getAiModel(),
       raw: text
     };
   } catch (_err) {
@@ -703,6 +720,7 @@ const aiController = {
 
       return res.json({
         ok: true,
+        ai: getAiProviderInfo(),
         ollama: {
           configured: isOllamaConfigured(),
           model: getOllamaModel(),
@@ -996,7 +1014,7 @@ const aiController = {
       const tone = parsed.data.tone || 'warm';
       const channel = parsed.data.channel || 'sms';
       const patientName = appointment.familyMember?.fullName || appointment.patient.fullName;
-      const startLabel = new Date(appointment.startAt).toISOString().replace('T', ' ').slice(0, 16);
+      const startLabel = formatIstDateTime(appointment.startAt);
 
       const fallback = normalizeReminderResult({
         ...getReminderTemplate(language, patientName, appointment.doctor.fullName, startLabel)
@@ -1010,7 +1028,7 @@ const aiController = {
         `Channel: ${channel}`,
         `Patient display name: ${patientName}`,
         `Doctor name: ${appointment.doctor.fullName}`,
-        `Appointment UTC time: ${startLabel}`,
+        `Appointment IST time: ${startLabel}`,
         'Keep message under 320 characters and avoid sensitive details.'
       ].join('\n');
 

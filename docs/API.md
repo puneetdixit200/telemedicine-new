@@ -82,6 +82,8 @@ Notes:
 | GET | /calls/:appointmentId | Yes | Any | Call session context for appointment. |
 | POST | /calls/:appointmentId/end | Yes | Any | End call session. |
 
+Consultation rooms use Supabase Realtime in the browser for WebRTC signaling, text chat, and `call_ended` broadcasts. The REST end route remains the durable server-side session close.
+
 ## 8. Prescriptions and Medicines
 
 | Method | Path | Auth | Role | Purpose |

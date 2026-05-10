@@ -24,6 +24,7 @@ const chatLanguageSelect = document.getElementById('chatLanguage');
 const chatLog = document.getElementById('chatLog');
 const chatForm = document.getElementById('chatForm');
 const chatInput = document.getElementById('chatInput');
+const endCallButton = document.querySelector('.call-end-btn');
 
 let signaling;
 let pc;
@@ -44,6 +45,8 @@ let qualityPreference = 'auto';
 let chatTranslationEnabled = false;
 let chatTargetLanguage = 'English';
 const translationCache = new Map();
+const SIGNALING_READY_TIMEOUT_MS = 8000;
+let remoteEndInProgress = false;
 
 // Doctor acts as the stable offerer by default; patient is the polite peer.
 const isPolitePeer = cfg.userRole === 'patient';
@@ -212,6 +215,44 @@ function setControlLabel(button, label) {
   }
 }
 
+function setControlActive(button, active) {
+  if (!button) return;
+  button.classList.toggle('active', Boolean(active));
+  button.setAttribute('aria-pressed', active ? 'true' : 'false');
+}
+
+function updateModeControls() {
+  setControlActive(btnVideo, currentMode === 'video');
+  setControlActive(btnAudio, currentMode === 'audio');
+  setControlActive(btnText, currentMode === 'text');
+
+  const hasAudio = Boolean(localStream && localStream.getAudioTracks().length);
+  const hasVideo = Boolean(localStream && localStream.getVideoTracks().length);
+
+  if (btnMute) {
+    btnMute.disabled = !hasAudio;
+    setControlLabel(btnMute, isMuted ? 'Unmute' : 'Mute');
+  }
+
+  if (btnCamera) {
+    btnCamera.disabled = currentMode !== 'video' || !hasVideo;
+    setControlLabel(btnCamera, isCameraOff ? 'Camera on' : 'Camera');
+  }
+}
+
+function leaveRoomFromRemoteEnd() {
+  if (remoteEndInProgress) return;
+  remoteEndInProgress = true;
+  setStatus('ended');
+  appendChat('[System] The consultation was ended by the other participant.');
+  disposePeerConnection();
+  stopLocalMedia();
+  updateModeControls();
+  setTimeout(() => {
+    window.location.assign(`/appointments/${encodeURIComponent(cfg.appointmentId)}`);
+  }, 350);
+}
+
 function stopLocalMedia() {
   if (!localStream) return;
   localStream.getTracks().forEach((track) => {
@@ -221,6 +262,7 @@ function stopLocalMedia() {
   });
   localStream = null;
   localVideo.srcObject = null;
+  updateModeControls();
 }
 
 function disposePeerConnection() {
@@ -340,46 +382,65 @@ function ensureSocket() {
       }
     }
   });
+  let resolveReady;
+  const ready = new Promise((resolve) => {
+    resolveReady = resolve;
+  });
+
+  function sendBroadcast(event, payload = {}) {
+    if (event === 'join_room') {
+      return channel.send({
+        type: 'broadcast',
+        event: 'peer_joined',
+        payload: {
+          appointmentId: cfg.appointmentId,
+          fromRole: cfg.userRole
+        }
+      });
+    }
+
+    if (event === 'signal') {
+      return channel.send({
+        type: 'broadcast',
+        event: 'signal',
+        payload: {
+          ...payload,
+          appointmentId: cfg.appointmentId,
+          fromRole: cfg.userRole
+        }
+      });
+    }
+
+    if (event === 'chat') {
+      return channel.send({
+        type: 'broadcast',
+        event: 'chat',
+        payload: {
+          message: payload.message,
+          appointmentId: cfg.appointmentId,
+          fromRole: cfg.userRole
+        }
+      });
+    }
+
+    if (event === 'call_ended') {
+      return channel.send({
+        type: 'broadcast',
+        event: 'call_ended',
+        payload: {
+          appointmentId: cfg.appointmentId,
+          fromRole: cfg.userRole
+        }
+      });
+    }
+
+    return Promise.resolve();
+  }
 
   signaling = {
+    ready,
     emit(event, payload = {}) {
-      if (event === 'join_room') {
-        return channel.send({
-          type: 'broadcast',
-          event: 'peer_joined',
-          payload: {
-            appointmentId: cfg.appointmentId,
-            fromRole: cfg.userRole
-          }
-        });
-      }
-
-      if (event === 'signal') {
-        return channel.send({
-          type: 'broadcast',
-          event: 'signal',
-          payload: {
-            ...payload,
-            appointmentId: cfg.appointmentId,
-            fromRole: cfg.userRole
-          }
-        });
-      }
-
-      if (event === 'chat') {
-        return channel.send({
-          type: 'broadcast',
-          event: 'chat',
-          payload: {
-            message: payload.message,
-            appointmentId: cfg.appointmentId,
-            fromRole: cfg.userRole,
-            at: new Date().toISOString()
-          }
-        });
-      }
-
-      return Promise.resolve();
+      return ready.then(() => sendBroadcast(event, payload));
     },
     disconnect() {
       return client.removeChannel(channel);
@@ -426,7 +487,9 @@ function ensureSocket() {
         logRtc('remote_offer_applied');
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        ensureSocket().emit('signal', { appointmentId: cfg.appointmentId, type: 'answer', payload: pc.localDescription });
+        ensureSocket()
+          .emit('signal', { appointmentId: cfg.appointmentId, type: 'answer', payload: pc.localDescription })
+          .catch((error) => console.error('[CALL][RTC] answer send failed', error));
       } else if (type === 'answer') {
         if (pc.signalingState !== 'have-local-offer') {
           logRtc('ignore_unexpected_answer', { receivedType: type });
@@ -466,8 +529,8 @@ function ensureSocket() {
   });
 
   channel.on('broadcast', { event: 'chat' }, async ({ payload }) => {
-    const { fromRole, message, at } = payload || {};
-    appendChat(`[${new Date(at).toLocaleTimeString()}] ${roleLabel(fromRole)}: ${message}`);
+    const { fromRole, message } = payload || {};
+    appendChat(`${roleLabel(fromRole)}: ${message}`);
 
     const incomingFromPeer = String(fromRole || '').toLowerCase() !== String(cfg.userRole || '').toLowerCase();
     if (!chatTranslationEnabled || !incomingFromPeer) return;
@@ -482,10 +545,18 @@ function ensureSocket() {
     }
   });
 
+  channel.on('broadcast', { event: 'call_ended' }, ({ payload }) => {
+    if (String(payload?.fromRole || '').toLowerCase() === String(cfg.userRole || '').toLowerCase()) return;
+    leaveRoomFromRemoteEnd();
+  });
+
   channel.subscribe((status) => {
     if (status === 'SUBSCRIBED') {
       setStatus('connected');
-      signaling.emit('join_room', { appointmentId: cfg.appointmentId });
+      resolveReady();
+      signaling
+        .emit('join_room', { appointmentId: cfg.appointmentId })
+        .catch((error) => console.error('[CALL][RTC] join send failed', error));
       return;
     }
 
@@ -497,11 +568,21 @@ function ensureSocket() {
   return signaling;
 }
 
+function waitForSignalingReady(socket) {
+  return Promise.race([
+    socket.ready,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Signaling channel timed out.')), SIGNALING_READY_TIMEOUT_MS);
+    })
+  ]);
+}
+
 async function setupLocalMedia(mode) {
   stopLocalMedia();
 
   if (mode === 'text') {
     localVideo.srcObject = null;
+    updateModeControls();
     return;
   }
 
@@ -528,6 +609,9 @@ async function setupLocalMedia(mode) {
 
   localStream = await navigator.mediaDevices.getUserMedia(constraints);
   localVideo.srcObject = localStream;
+  isMuted = false;
+  isCameraOff = false;
+  updateModeControls();
 }
 
 async function setupPeerConnection() {
@@ -539,7 +623,9 @@ async function setupPeerConnection() {
   pc.onicecandidate = (event) => {
     if (event.candidate) {
       logRtc('local_ice_candidate');
-      ensureSocket().emit('signal', { appointmentId: cfg.appointmentId, type: 'ice_candidate', payload: event.candidate });
+      ensureSocket()
+        .emit('signal', { appointmentId: cfg.appointmentId, type: 'ice_candidate', payload: event.candidate })
+        .catch((error) => console.error('[CALL][RTC] ice send failed', error));
     }
   };
 
@@ -581,6 +667,7 @@ async function setupPeerConnection() {
 
 async function maybeMakeOffer() {
   if (!pc) return;
+  await ensureSocket().ready;
   if (pc.signalingState !== 'stable') {
     logRtc('skip_offer_non_stable');
     return;
@@ -591,7 +678,7 @@ async function maybeMakeOffer() {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     logRtc('local_offer_created');
-    ensureSocket().emit('signal', { appointmentId: cfg.appointmentId, type: 'offer', payload: pc.localDescription });
+    await ensureSocket().emit('signal', { appointmentId: cfg.appointmentId, type: 'offer', payload: pc.localDescription });
   } catch (e) {
     console.error('[CALL][RTC] offer creation failed', e);
   } finally {
@@ -619,12 +706,29 @@ async function startMode(mode) {
   }
 
   currentMode = mode;
-  ensureSocket();
+  updateModeControls();
+
+  try {
+    const socket = ensureSocket();
+    await waitForSignalingReady(socket);
+  } catch (error) {
+    console.error('[CALL][RTC] signaling unavailable', error);
+    setStatus('signaling_error');
+    appendChat('[System] Realtime connection is unavailable. Text chat may not sync until the network reconnects.');
+    if (mode !== 'text') {
+      currentMode = 'text';
+      disposePeerConnection();
+      stopLocalMedia();
+      updateModeControls();
+    }
+    return;
+  }
 
   if (mode === 'text') {
     disposePeerConnection();
     stopLocalMedia();
     setStatus('text');
+    updateModeControls();
     return;
   }
 
@@ -634,6 +738,7 @@ async function startMode(mode) {
     await setupPeerConnection();
     await maybeMakeOffer();
     setStatus('in_call');
+    updateModeControls();
   } catch (e) {
     console.error(e);
     if (mode === 'video') {
@@ -649,13 +754,22 @@ async function startMode(mode) {
       return;
     }
     setStatus('media_error');
-    alert('Media error. Switching to text chat.');
+    appendChat('[System] Media error. Switching to text chat.');
   }
 }
 
-btnVideo.addEventListener('click', () => startMode('video'));
-btnAudio.addEventListener('click', () => startMode('audio'));
-btnText.addEventListener('click', () => startMode('text'));
+function runMode(mode) {
+  startMode(mode).catch((error) => {
+    console.error('[CALL][RTC] mode switch failed', error);
+    setStatus('call_error');
+    appendChat('[System] Could not switch call mode. Please try again.');
+    updateModeControls();
+  });
+}
+
+btnVideo.addEventListener('click', () => runMode('video'));
+btnAudio.addEventListener('click', () => runMode('audio'));
+btnText.addEventListener('click', () => runMode('text'));
 if (btnDataQuality) {
   btnDataQuality.addEventListener('click', () => {
     cycleQualityPreference().catch((e) => {
@@ -670,7 +784,7 @@ btnMute.addEventListener('click', () => {
   localStream.getAudioTracks().forEach((t) => {
     t.enabled = !isMuted;
   });
-  setControlLabel(btnMute, isMuted ? 'Unmute' : 'Mute');
+  updateModeControls();
 });
 
 btnCamera.addEventListener('click', () => {
@@ -679,7 +793,7 @@ btnCamera.addEventListener('click', () => {
   localStream.getVideoTracks().forEach((t) => {
     t.enabled = !isCameraOff;
   });
-  setControlLabel(btnCamera, isCameraOff ? 'Camera on' : 'Camera');
+  updateModeControls();
 });
 
 chatForm.addEventListener('submit', async (e) => {
@@ -697,8 +811,13 @@ chatForm.addEventListener('submit', async (e) => {
     }
   }
 
-  ensureSocket().emit('chat', { appointmentId: cfg.appointmentId, message: outgoingMessage });
-  appendChat(`[${new Date().toLocaleTimeString()}] ${roleLabel(cfg.userRole)}: ${outgoingMessage}`);
+  ensureSocket()
+    .emit('chat', { appointmentId: cfg.appointmentId, message: outgoingMessage })
+    .catch((error) => {
+      console.error('[CALL][RTC] chat send failed', error);
+      appendChat('[System] Message could not be sent. Please try again.');
+    });
+  appendChat(`${roleLabel(cfg.userRole)}: ${outgoingMessage}`);
 
   if (chatTranslationEnabled && outgoingMessage !== message) {
     appendChat(`[System] Sent in ${chatTargetLanguage}: ${outgoingMessage}`);
@@ -724,6 +843,17 @@ if (chatLanguageSelect) {
   });
 }
 
+if (endCallButton) {
+  endCallButton.addEventListener('click', () => {
+    setStatus('ending');
+    ensureSocket()
+      .emit('call_ended', { appointmentId: cfg.appointmentId })
+      .catch((error) => console.error('[CALL][RTC] call-ended send failed', error));
+    disposePeerConnection();
+    stopLocalMedia();
+  });
+}
+
 // Auto-start the configured mode.
 qualityPreference = readQualityPreference();
 applyQualityPreference(qualityPreference, { announce: false }).catch(() => {});
@@ -733,7 +863,8 @@ if (chatLanguageSelect && chatTargetLanguage) {
   chatLanguageSelect.value = chatTargetLanguage;
 }
 updateTranslateLabel();
-startMode(cfg.defaultMode);
+updateModeControls();
+runMode(cfg.defaultMode);
 
 window.addEventListener('online', updateConnectivityHint);
 window.addEventListener('offline', updateConnectivityHint);
@@ -742,3 +873,5 @@ const connection = navigator.connection || navigator.mozConnection || navigator.
 connection?.addEventListener?.('change', updateConnectivityHint);
 
 updateConnectivityHint();
+
+window.__telemedicineCallReady = true;

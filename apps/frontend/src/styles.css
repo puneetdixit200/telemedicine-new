@@ -812,6 +812,67 @@ p {
   padding: 1rem;
 }
 
+.skeleton-page {
+  width: min(1120px, calc(100vw - 2rem));
+  margin: 0 auto;
+  padding: 1rem 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.skeleton-card {
+  display: grid;
+  gap: 0.72rem;
+  min-height: 132px;
+  align-content: start;
+  padding: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.72);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: var(--shadow-sm);
+}
+
+.skeleton-card.hero {
+  min-height: 168px;
+}
+
+.skeleton-inline {
+  display: grid;
+  gap: 0.65rem;
+  width: min(680px, 100%);
+  padding: 0.7rem 0;
+}
+
+.skeleton-line {
+  display: block;
+  height: 0.86rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.9), rgba(248, 250, 252, 0.95), rgba(226, 232, 240, 0.9));
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.25s ease-in-out infinite;
+}
+
+.skeleton-line.tall {
+  height: 1.55rem;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
+}
+
 .welcome-layout,
 .auth-layout {
   min-height: 100vh;
@@ -5501,24 +5562,6 @@ img.sanctuary-home-specialty-icon {
   padding: 0.4rem 0.55rem;
 }
 
-.call-ai-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  border-radius: 0.85rem;
-  background: #eefaf8;
-  border: 1px solid #b8ddd6;
-  color: #0b6a61;
-  font-size: 0.76rem;
-  font-weight: 800;
-}
-
-.call-ai-link:hover {
-  text-decoration: none;
-  background: #e1f6f2;
-}
-
 .call-chat-log {
   min-height: 320px;
   max-height: 60vh;
@@ -5602,6 +5645,11 @@ img.sanctuary-home-specialty-icon {
   background: #dff4f0;
   color: #005049;
   border-color: #9fd9d0;
+}
+
+.call-control-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
 }
 
 .call-control-btn .material-symbols-outlined {
@@ -6873,9 +6921,211 @@ img.sanctuary-home-specialty-icon {
   /* ── Base ── */
   html, body, #root {
     font-size: 15px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  main,
+  section,
+  article,
+  aside,
+  form {
+    min-width: 0;
+  }
+
+  button,
+  .btn,
+  a.btn,
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+
+  button,
+  .btn,
+  a.btn {
+    min-height: 44px;
+  }
+
+  .card,
+  .panel,
+  .panel-soft,
+  .patient-info-card,
+  .patient-appointment-action-card,
+  .doctor-status-card,
+  .doctor-bulk-card,
+  .doctor-upcoming-card {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .row-inline,
+  .actions,
+  .button-row,
+  .patient-appointment-action-grid,
+  .doctor-status-actions,
+  .doctor-appointment-actions,
+  .doctor-appointment-action-grid,
+  .call-chat-tools-row {
+    flex-wrap: wrap;
+  }
+
+  .table-wrap,
+  .data-table-wrap,
+  table {
+    max-width: 100%;
+  }
+
+  .table-wrap,
+  .data-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 640px;
+  }
+
+  .dashboard-grid,
+  .dashboard-actions,
+  .booking-profile-grid,
+  .booking-symptom-grid,
+  .booking-mode-grid,
+  .booking-slot-grid,
+  .booking-doctor-list,
+  .patient-history-grid,
+  .doctor-slots-grid,
+  .doctor-bulk-time-grid,
+  .ai-status-grid,
+  .ai-toolbox-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-appointment-main,
+  .patient-mobile-primary-actions,
+  .doctor-appointment-content,
+  .doctor-appointment-grid,
+  .doctor-appointment-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-appointment-topbar,
+  .doctor-appointment-topbar {
+    top: 0;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  }
+
+  .patient-appointment-summary h1,
+  .doctor-appointment-hero h1 {
+    font-size: 1.55rem;
+    line-height: 1.16;
+    overflow-wrap: anywhere;
+  }
+
+  .patient-appointment-cta,
+  .patient-appointment-text-btn,
+  .doctor-appointment-action-main,
+  .doctor-appointment-sub-btn,
+  .booking-slot-chip,
+  .booking-date-chip {
+    width: 100%;
+  }
+
+  .call-sanctuary-shell {
+    min-height: 100dvh;
+    padding-bottom: 8.5rem;
+    grid-template-columns: 1fr;
+  }
+
+  .call-sanctuary-top,
+  .call-top-right,
+  .call-top-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .call-sanctuary-main,
+  .call-sidebar {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .call-sanctuary-main {
+    padding: 0.75rem 0.65rem 0;
+  }
+
+  .call-video-stage {
+    min-height: 42vh;
+    border-radius: var(--radius-lg);
+  }
+
+  .call-local-wrap {
+    width: 34vw;
+    max-width: 132px;
+    min-width: 88px;
+  }
+
+  .call-sidebar {
+    max-height: none;
+    grid-column: 1;
+    grid-row: auto;
+    padding: 0.75rem 0.65rem 8.75rem;
+  }
+
+  .call-chat-log {
+    min-height: 220px;
+    max-height: 36vh;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .call-controls {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.65rem;
+    border-radius: 1.25rem 1.25rem 0 0;
+  }
+
+  .call-controls-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+    width: 100%;
+  }
+
+  .call-control-btn {
+    min-width: 0;
+    min-height: 54px;
+    padding: 0.35rem;
+    font-size: 0.58rem;
+  }
+
+  .call-control-btn.compact {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .call-end-btn {
+    width: 100%;
+    min-height: 54px;
+  }
+
+  .skeleton-page {
+    width: min(100%, calc(100vw - 1rem));
+    padding-inline: 0.5rem;
+  }
+
+  .skeleton-grid {
+    grid-template-columns: 1fr;
   }
 
   /* ── Entrance animation for pages ── */
@@ -7342,7 +7592,7 @@ img.sanctuary-home-specialty-icon {
 
   /* ── Call/chat ── */
   .call-chat-log {
-    max-height: 340px;
+    max-height: 36vh;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -7452,6 +7702,76 @@ img.sanctuary-home-specialty-icon {
 
   .journey-sub {
     font-size: 0.92rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .page-wrap,
+  .compass-shell,
+  .patient-appointment-shell,
+  .doctor-slots-shell,
+  .doctor-analytics-shell {
+    padding-inline: 0.65rem;
+  }
+
+  .auth-card,
+  .welcome-card,
+  .card,
+  .patient-info-card,
+  .patient-appointment-action-card,
+  .doctor-status-card,
+  .doctor-bulk-card,
+  .doctor-upcoming-card {
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+  }
+
+  .booking-action-bar,
+  .row-between,
+  .doctor-upcoming-head,
+  .doctor-status-top {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .booking-next-btn,
+  .booking-back-btn,
+  .row-inline > *,
+  .doctor-status-actions > *,
+  .doctor-filter-wrap,
+  .patient-mobile-primary-actions > *,
+  .patient-appointment-action-grid > * {
+    width: 100%;
+  }
+
+  .call-sanctuary-top {
+    padding: 0.65rem;
+  }
+
+  .call-top-left {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .call-top-meta {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .call-video-stage {
+    min-height: 36vh;
+  }
+
+  .call-controls-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .call-control-btn {
+    min-height: 50px;
+  }
+
+  .call-sidebar {
+    padding-bottom: 11rem;
   }
 }
 

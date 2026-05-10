@@ -21,10 +21,12 @@ function buildReminderPayload(appointment, minutesBefore) {
 
   const whenLabel = Number.isNaN(localStart.getTime())
     ? 'soon'
-    : `${localStart.toLocaleDateString('en-IN')} ${localStart.toLocaleTimeString('en-IN', {
+    : `${localStart.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} ${localStart.toLocaleTimeString('en-IN', {
         hour: '2-digit',
-        minute: '2-digit'
-      })}`;
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata'
+      })} IST`;
 
   const leadLabel = minutesBefore >= 60 ? `${Math.round(minutesBefore / 60)} hour` : `${minutesBefore} minutes`;
   const leadPlural = leadLabel.endsWith('s') ? '' : 's';
@@ -42,10 +44,12 @@ function buildRefillReminderPayload(appointment) {
   const doctorName = safeText(appointment.doctor?.fullName) || 'Doctor';
   const followUpAt = appointment.prescription?.followUpAt ? new Date(appointment.prescription.followUpAt) : null;
   const followUpLabel = followUpAt
-    ? `${followUpAt.toLocaleDateString('en-IN')} ${followUpAt.toLocaleTimeString('en-IN', {
+    ? `${followUpAt.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} ${followUpAt.toLocaleTimeString('en-IN', {
         hour: '2-digit',
-        minute: '2-digit'
-      })}`
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata'
+      })} IST`
     : 'your follow-up date';
   const handoffCode = safeText(appointment.prescription?.handoffCode);
 
@@ -223,7 +227,10 @@ function messageForDispatch(job) {
 
   const patientName = safeText(job.patient?.fullName) || 'Patient';
   const doctorName = safeText(job.appointment?.doctor?.fullName) || 'Doctor';
-  const timeLabel = new Date(job.appointment?.startAt || '').toLocaleString('en-IN');
+  const timeLabel = `${new Date(job.appointment?.startAt || '').toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour12: true
+  })} IST`;
   return `Namaste ${patientName}. Reminder: consultation with Dr. ${doctorName} at ${timeLabel}.`;
 }
 

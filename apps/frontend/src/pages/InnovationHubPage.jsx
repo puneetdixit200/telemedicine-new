@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
 
 const ASYNC_REPLY_QUEUE_KEY = 'async:reply-queue:v1';
+const IST_TIME_ZONE = 'Asia/Kolkata';
 
 function getErrorMessage(response, fallback) {
   return response?.data?.error || response?.data?.message || fallback;
@@ -11,7 +12,7 @@ function getErrorMessage(response, fallback) {
 function compactDate(value) {
   if (!value) return 'N/A';
   try {
-    return new Date(value).toLocaleString();
+    return `${new Date(value).toLocaleString('en-IN', { timeZone: IST_TIME_ZONE })} IST`;
   } catch (_error) {
     return String(value);
   }

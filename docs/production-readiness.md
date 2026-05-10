@@ -37,14 +37,15 @@ A release is production-ready only if all sections below are green:
 - [ ] `NODE_ENV=production`
 - [ ] `DATABASE_URL` configured
 - [ ] `APP_BASE_URL` configured
-- [ ] `AZURE_STORAGE_CONNECTION_STRING` configured
+- [ ] `AZURE_STORAGE_CONNECTION_STRING` configured, or `AZURE_STORAGE_ACCOUNT_NAME` plus `AZURE_STORAGE_ACCOUNT_KEY` configured
 - [ ] `AZURE_STORAGE_CONTAINER` configured
 - [ ] `AZURE_UPLOADS_MODE=azure-only`
+- [ ] `OPENROUTER_API_KEY` configured if online AI assistance is expected
 
 ## 3.2 Platform settings
 
 - [ ] HTTPS Only enabled
-- [ ] WebSockets enabled
+- [ ] Supabase Realtime reachable from deployed browser sessions
 - [ ] Startup command set to `bash startup.sh`
 
 ## 4. Data and Migration Safety

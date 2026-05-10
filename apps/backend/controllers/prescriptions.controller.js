@@ -4,6 +4,31 @@ const { prisma } = require('../models/db');
 const { upsertSchema } = require('../models/schemas/prescriptions.schemas');
 const { scheduleRefillReminderForAppointment } = require('../services/reminder.service');
 
+function formatIstDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown time';
+  return `${date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  })} IST`;
+}
+
+function formatIstDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+  return date.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit'
+  });
+}
+
 function parseItems(itemsText) {
   // One per line: name, dosage, frequency, duration, side effects
   const lines = String(itemsText)
@@ -525,7 +550,7 @@ const prescriptionsController = {
       doc.fontSize(12);
       doc.text(`Doctor: ${appt.doctor.fullName}`);
       doc.text(`Patient: ${appt.patient.fullName}`);
-      doc.text(`Appointment: ${new Date(appt.startAt).toISOString().replace('T', ' ').slice(0, 16)} UTC`);
+      doc.text(`Appointment: ${formatIstDateTime(appt.startAt)}`);
       doc.moveDown();
 
       doc.fontSize(13).text('Diagnosis:', { underline: true });
@@ -551,7 +576,7 @@ const prescriptionsController = {
       }
 
       if (appt.prescription.followUpAt) {
-        doc.fontSize(12).text(`Follow-up: ${new Date(appt.prescription.followUpAt).toISOString().slice(0, 10)}`);
+        doc.fontSize(12).text(`Follow-up: ${formatIstDate(appt.prescription.followUpAt)}`);
       }
 
       const handoff = resolvePrescriptionHandoff(appt.prescription, appt.id);

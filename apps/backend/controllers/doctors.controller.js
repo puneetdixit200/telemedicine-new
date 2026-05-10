@@ -13,15 +13,31 @@ function isMissingDoctorReviewTable(error) {
   );
 }
 
-function getUtcRangeForDate(dateStr) {
-  const [y, m, d] = dateStr.split('-').map((v) => Number(v));
-  const start = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-  const end = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
+function getUtcRangeForIstDate(dateStr) {
+  const start = new Date(`${dateStr}T00:00:00.000+05:30`);
+  const end = new Date(`${dateStr}T23:59:59.999+05:30`);
   return { start, end };
 }
 
-function startOfUtcDay(date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+function getIstDateKey(date) {
+  const parts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date(date));
+  const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${lookup.year}-${lookup.month}-${lookup.day}`;
+}
+
+function startOfIstDay(date) {
+  return getUtcRangeForIstDate(getIstDateKey(date)).start;
+}
+
+function istHourOnDate(dateStr, hour) {
+  const base = getUtcRangeForIstDate(dateStr).start;
+  base.setUTCMinutes(base.getUTCMinutes() + Number(hour) * 60);
+  return base;
 }
 
 const FEEDBACK_STOPWORDS = new Set([
@@ -277,7 +293,7 @@ const doctorsController = {
     try {
       const now = new Date();
       const sevenDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-      const start = startOfUtcDay(sevenDaysAgo);
+      const start = startOfIstDay(sevenDaysAgo);
 
       const appts = await prisma.appointment.findMany({
         where: {
@@ -291,12 +307,12 @@ const doctorsController = {
       const byDay = {};
       for (let i = 0; i < 7; i++) {
         const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
-        byDay[d.toISOString().slice(0, 10)] = 0;
+        byDay[getIstDateKey(d)] = 0;
       }
 
       appts.forEach((a) => {
         statusCounts[a.status] = (statusCounts[a.status] || 0) + 1;
-        const key = new Date(a.startAt).toISOString().slice(0, 10);
+        const key = getIstDateKey(a.startAt);
         if (Object.prototype.hasOwnProperty.call(byDay, key)) byDay[key] += 1;
       });
 
@@ -439,16 +455,13 @@ const doctorsController = {
       }
 
       const { date, action } = parsed.data;
-      const { start, end } = getUtcRangeForDate(date);
 
-      // Generate 15-min slots 09:00-17:00 UTC by default
+      // Generate 15-min slots 09:00-17:00 IST by default.
       const startHour = parsed.data.startHourUtc ? Number(parsed.data.startHourUtc) : 9;
       const endHour = parsed.data.endHourUtc ? Number(parsed.data.endHourUtc) : 17;
 
-      const base = new Date(start);
-      base.setUTCHours(startHour, 0, 0, 0);
-      const limit = new Date(start);
-      limit.setUTCHours(endHour, 0, 0, 0);
+      const base = istHourOnDate(date, startHour);
+      const limit = istHourOnDate(date, endHour);
 
       const targets = [];
       for (let t = base.getTime(); t < limit.getTime(); t += 15 * 60 * 1000) {

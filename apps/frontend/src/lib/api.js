@@ -37,11 +37,25 @@ export async function apiRequest(path, options = {}) {
   };
 }
 
-export function utcDateTime(value) {
+const IST_TIME_ZONE = 'Asia/Kolkata';
+
+export function istDateTime(value) {
   if (!value) return 'N/A';
   try {
-    return new Date(value).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: IST_TIME_ZONE,
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }).format(new Date(value)) + ' IST';
   } catch (_err) {
     return String(value);
   }
+}
+
+export function utcDateTime(value) {
+  return istDateTime(value);
 }

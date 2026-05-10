@@ -51,7 +51,10 @@ describe('Next.js Supabase migration guard', () => {
       'SUPABASE_SERVICE_ROLE_KEY',
       'DATABASE_URL',
       'AZURE_STORAGE_CONNECTION_STRING',
-      'AZURE_STORAGE_CONTAINER'
+      'AZURE_STORAGE_ACCOUNT_NAME',
+      'AZURE_STORAGE_ACCOUNT_KEY',
+      'AZURE_STORAGE_CONTAINER',
+      'OPENROUTER_API_KEY'
     ]) {
       expect(envExample).toContain(variableName);
       expect(envLocalExample).toContain(variableName);

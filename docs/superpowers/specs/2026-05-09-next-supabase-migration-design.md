@@ -11,7 +11,7 @@ Move the telemedicine project into a Next.js App Router application while preser
 - Database: Supabase Postgres using the existing Prisma schema as the initial compatibility model.
 - Auth target: Supabase Auth with application profile rows in `public.users`; keep compatibility helpers for the existing UI during the first migration pass.
 - File upload target: Azure Blob Storage, using server-side upload/read-SAS route handlers only.
-- Realtime target: preserve existing Socket.IO call behavior locally/custom-server first, then migrate signaling/chat to Supabase Realtime in a later focused pass.
+- Realtime target: use Supabase Realtime for browser consultation signaling, chat, and shared call-end events.
 - UI migration strategy: lift the current React Router SPA into a Next client component so feature coverage is preserved immediately.
 - API migration strategy: expose a Next-owned compatibility API surface while adding Supabase server/browser clients and migration SQL. Existing business logic stays callable during the first pass, then can be moved route-by-route to server actions or route handlers.
 

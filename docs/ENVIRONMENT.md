@@ -14,6 +14,7 @@ Use `.env.local.example` as the local template and keep real secrets out of git.
 ## Required for Azure Blob Storage
 
 - `AZURE_STORAGE_CONNECTION_STRING`: storage account connection string.
+- `AZURE_STORAGE_ACCOUNT_NAME` and `AZURE_STORAGE_ACCOUNT_KEY`: optional alternative to a full connection string. Use real values; placeholders are ignored.
 - `AZURE_STORAGE_CONTAINER`: container for patient documents, usually `patient-documents`.
 - `AZURE_STORAGE_PUBLIC_BASE_URL`: optional CDN/public base URL. Secure reads use SAS URLs by default.
 - `AZURE_UPLOADS_MODE`: use `azure-only` for production.
@@ -34,16 +35,24 @@ Set these for Production and Preview in the Vercel project:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `AZURE_STORAGE_CONNECTION_STRING`
+- `AZURE_STORAGE_ACCOUNT_NAME` and `AZURE_STORAGE_ACCOUNT_KEY` if no connection string is provided
 - `AZURE_STORAGE_CONTAINER`
 - `AZURE_STORAGE_PUBLIC_BASE_URL`
 - `AZURE_UPLOADS_MODE=azure-only`
 - `APP_BASE_URL`
 - `READINESS_TIMEOUT_MS`
-- Optional AI vars: `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS`, `AI_RATE_LIMIT_PER_MINUTE`.
+- Optional AI vars: `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_TIMEOUT_MS`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS`, `AI_RATE_LIMIT_PER_MINUTE`.
 
 ## Optional
 
 - `APPLICATIONINSIGHTS_CONNECTION_STRING`: Azure Application Insights telemetry.
-- `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS`, `AI_RATE_LIMIT_PER_MINUTE`: AI copilot endpoint settings.
+- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_TIMEOUT_MS`: online AI copilot settings. OpenRouter is preferred when configured.
+- `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS`, `AI_RATE_LIMIT_PER_MINUTE`: local Ollama fallback and AI endpoint rate-limit settings.
 - `ADMIN_INVITE_CODE`: restricts admin registration.
 - `ENABLE_REMINDER_CRON`, `REMINDER_CRON_INTERVAL_MS`, `REMINDER_CRON_BATCH_LIMIT`: reminder dispatch settings.
+
+## Runtime Notes
+
+- User-facing dates and times are formatted in Indian Standard Time (`Asia/Kolkata`).
+- Azure-only document uploads require valid Azure credentials. For local testing without Azure, set `AZURE_UPLOADS_MODE=local-only`.
+- OpenRouter is used before Ollama when `OPENROUTER_API_KEY` is set. The default free model is `openai/gpt-oss-120b:free`.

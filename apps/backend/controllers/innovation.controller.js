@@ -18,6 +18,17 @@ const {
   offlineSyncSchema
 } = require('../models/schemas/innovation.schemas');
 
+function formatIstDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+  return date.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit'
+  });
+}
+
 function normalizePhone(value) {
   return String(value || '')
     .replace(/[^0-9]/g, '')
@@ -772,7 +783,7 @@ const innovationController = {
       const summaryParts = [
         `Patient: ${patient.fullName}`,
         patient.gender ? `Gender: ${patient.gender}` : null,
-        patient.dateOfBirth ? `DOB: ${new Date(patient.dateOfBirth).toISOString().slice(0, 10)}` : null,
+        patient.dateOfBirth ? `DOB: ${formatIstDate(patient.dateOfBirth)}` : null,
         patient.patientProfile?.chronicConditions
           ? `Chronic conditions: ${patient.patientProfile.chronicConditions}`
           : null,

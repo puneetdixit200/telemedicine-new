@@ -20,6 +20,7 @@ const RuralSupportContext = createContext(null);
 const AI_OFFLINE_DRAFTS_KEY = 'ai:offline-drafts:v1';
 const ASYNC_REPLY_QUEUE_KEY = 'async:reply-queue:v1';
 const HELPER_ONBOARDING_KEY = 'helper:onboarding:v1';
+const IST_TIME_ZONE = 'Asia/Kolkata';
 
 function readJsonStorage(key, fallback) {
   try {
@@ -41,7 +42,7 @@ function writeJsonStorage(key, value) {
 function formatCachedAt(timestamp) {
   if (!timestamp) return 'an unknown time';
   try {
-    return new Date(timestamp).toLocaleString();
+    return `${new Date(timestamp).toLocaleString('en-IN', { timeZone: IST_TIME_ZONE })} IST`;
   } catch (_err) {
     return 'an unknown time';
   }
@@ -72,14 +73,89 @@ function formatPrettyDate(value) {
   if (!value) return 'Unknown date';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Unknown date';
-  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  return date.toLocaleDateString('en-IN', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: IST_TIME_ZONE
+  });
 }
 
 function formatPrettyTime(value) {
   if (!value) return 'Unknown time';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Unknown time';
-  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: IST_TIME_ZONE
+  });
+}
+
+function formatIstDateTime(value) {
+  if (!value) return 'Unknown time';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown time';
+  return `${formatPrettyDate(date)} at ${formatPrettyTime(date)} IST`;
+}
+
+function istDateKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: IST_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${lookup.year}-${lookup.month}-${lookup.day}`;
+}
+
+function formatIstDateLabelFromKey(value, options = {}) {
+  if (!value) return 'Unknown date';
+  const date = new Date(`${value}T00:00:00+05:30`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-IN', {
+    timeZone: IST_TIME_ZONE,
+    ...options
+  });
+}
+
+function SkeletonLine({ width = '100%', className = '' }) {
+  return <span className={`skeleton-line ${className}`} style={{ width }} aria-hidden="true" />;
+}
+
+function InlineSkeleton({ rows = 3 }) {
+  return (
+    <div className="skeleton-inline" aria-label="Loading">
+      {Array.from({ length: rows }).map((_, index) => (
+        <SkeletonLine key={index} width={index % 3 === 0 ? '72%' : index % 3 === 1 ? '92%' : '58%'} />
+      ))}
+    </div>
+  );
+}
+
+function PageSkeleton({ title = 'Loading', rows = 5 }) {
+  return (
+    <section className="skeleton-page" aria-label={title} aria-busy="true">
+      <div className="skeleton-card hero">
+        <SkeletonLine width="32%" />
+        <SkeletonLine width="62%" className="tall" />
+        <SkeletonLine width="44%" />
+      </div>
+      <div className="skeleton-grid">
+        {Array.from({ length: rows }).map((_, index) => (
+          <article className="skeleton-card" key={index}>
+            <SkeletonLine width="42%" />
+            <SkeletonLine width="88%" />
+            <SkeletonLine width="68%" />
+          </article>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function getModeRecommendation(networkType, isOnline = true) {
@@ -423,7 +499,9 @@ function buildPrescriptionNarrationText({ patientName, doctorName, diagnosis, it
   const safeItems = Array.isArray(items) ? items : [];
   const diagnosisText = String(diagnosis || 'not specified').trim() || 'not specified';
   const instructionSimple = ensureSentence(instructions, 'Follow doctor instructions');
-  const followUpText = followUpAt ? new Date(followUpAt).toLocaleDateString('en-US') : '';
+  const followUpText = followUpAt
+    ? new Date(followUpAt).toLocaleDateString('en-IN', { timeZone: IST_TIME_ZONE })
+    : '';
 
   const medicineLines = safeItems.length
     ? safeItems
@@ -689,8 +767,7 @@ function App() {
   if (loading) {
     return (
       <div className="loading-screen">
-        <h1>Sanctuary Health</h1>
-        <p>Loading your care dashboard...</p>
+        <PageSkeleton title="Loading your care dashboard" rows={4} />
       </div>
     );
   }
@@ -1507,7 +1584,7 @@ function RegisterPage() {
                   autoComplete="new-password"
                   value={form.password}
                   onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="********"
                   required
                 />
               </label>
@@ -1661,9 +1738,9 @@ function RegisterPage() {
       <footer className="auth-register-footer">
         <div>
           <Link to="/privacy-policy">Privacy Policy</Link>
-          <span>â€¢</span>
+          <span>-</span>
           <Link to="/terms-of-service">Terms of Service</Link>
-          <span>â€¢</span>
+          <span>-</span>
           <Link to="/help-center">Help Center</Link>
         </div>
       </footer>
@@ -2464,7 +2541,7 @@ function BookingWizardPage() {
     (doctorDetail?.slots || [])
       .filter((slot) => slot.status === 'available')
       .forEach((slot) => {
-        const date = new Date(slot.startAt).toISOString().slice(0, 10);
+        const date = istDateKey(slot.startAt);
         if (!grouped[date]) grouped[date] = [];
         grouped[date].push(slot);
       });
@@ -2649,7 +2726,7 @@ function BookingWizardPage() {
       </div>
 
       {error ? <p className="error">{error}</p> : null}
-      {loading ? <p className="muted">Preparing your guided booking journey...</p> : null}
+      {loading ? <InlineSkeleton rows={4} /> : null}
       {!loading ? <p className="muted booking-status-note">{message}</p> : null}
 
       {!loading && step === 1 ? (
@@ -2775,7 +2852,7 @@ function BookingWizardPage() {
 
       {!loading && step === 4 ? (
         <div className="booking-time-shell">
-          {doctorLoading ? <p className="muted">Finding the best doctor for you and checking slots...</p> : null}
+          {doctorLoading ? <InlineSkeleton rows={3} /> : null}
 
           <section>
             <h3>Consultation Mode</h3>
@@ -2831,7 +2908,7 @@ function BookingWizardPage() {
                     setSelectedSlotId(availableByDate[date]?.[0]?.id || '');
                   }}
                 >
-                  {new Date(date).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
+                  {formatIstDateLabelFromKey(date, { weekday: 'short', day: 'numeric' })}
                 </button>
               ))}
             </div>
@@ -2848,7 +2925,7 @@ function BookingWizardPage() {
                   className={`booking-slot-chip ${selectedSlotId === slot.id ? 'selected' : ''}`}
                   onClick={() => setSelectedSlotId(slot.id)}
                 >
-                  {utcDateTime(slot.startAt).slice(11, 16)} UTC
+                  {formatPrettyTime(slot.startAt)} IST
                 </button>
               ))}
             </div>
@@ -3170,7 +3247,7 @@ function PharmacyOrdersPage() {
     reload();
   };
 
-  if (loading) return <p className="muted">Loading pharmacy orders...</p>;
+  if (loading) return <PageSkeleton title="Loading pharmacy orders" rows={4} />;
   if (error) return <p className="error">{error}</p>;
 
   const orders = data?.orders || [];
@@ -3435,7 +3512,7 @@ function LabTestsPage() {
     reload();
   };
 
-  if (loading) return <p className="muted">Loading lab workflows...</p>;
+  if (loading) return <PageSkeleton title="Loading lab workflows" rows={4} />;
   if (error) return <p className="error">{error}</p>;
 
   const orders = data?.orders || [];
@@ -4042,7 +4119,7 @@ function DoctorsPage() {
 
       {error ? <p className="error">{error}</p> : null}
       {usingCached ? <p className="muted">Showing saved doctor list from {formatCachedAt(cachedAt)}.</p> : null}
-      {loading ? <p className="muted">Loading doctors...</p> : null}
+      {loading ? <InlineSkeleton rows={4} /> : null}
 
       <section className="journey-doctors-grid">
         {(payload?.doctors || []).map((doctor) => (
@@ -4103,7 +4180,7 @@ function DoctorDetailPage() {
     (data?.slots || [])
       .filter((slot) => slot.status === 'available')
       .forEach((slot) => {
-        const date = new Date(slot.startAt).toISOString().slice(0, 10);
+        const date = istDateKey(slot.startAt);
         if (!result[date]) result[date] = [];
         result[date].push(slot);
       });
@@ -4159,7 +4236,7 @@ function DoctorDetailPage() {
     setMessage('Booked.');
   };
 
-  if (loading) return <p className="muted">Loading doctor profile...</p>;
+  if (loading) return <PageSkeleton title="Loading doctor profile" rows={4} />;
   if (error) return <p className="error">{error}</p>;
 
   const slotDates = Object.keys(availableByDate).sort();
@@ -4282,7 +4359,7 @@ function AppointmentsPage() {
         </p>
       </section>
 
-      {loading ? <p className="muted">Loading appointments...</p> : null}
+      {loading ? <InlineSkeleton rows={4} /> : null}
       {error ? <p className="error">{error}</p> : null}
       {cacheMeta.fromCache ? (
         <p className="muted">📅 Showing saved appointments from {formatCachedAt(cacheMeta.cachedAt)}.</p>
@@ -4444,7 +4521,7 @@ function ImpactPage() {
         </Link>
       </section>
 
-      {loading ? <p className="muted">Loading metrics...</p> : null}
+      {loading ? <InlineSkeleton rows={4} /> : null}
       {error ? <p className="error">{error}</p> : null}
 
       {metrics ? (
@@ -4795,7 +4872,7 @@ function AppointmentDetailPage() {
     reload();
   };
 
-  if (loading) return <p className="muted">Loading appointment...</p>;
+  if (loading) return <PageSkeleton title="Loading appointment" rows={4} />;
   if (error) return <p className="error">{error}</p>;
   if (!data?.appointment) return <p className="error">Appointment not found.</p>;
 
@@ -4837,9 +4914,9 @@ function AppointmentDetailPage() {
             <section className="patient-appointment-summary">
               <p className="patient-appointment-kicker">Scheduled For</p>
               <span className="patient-appointment-status">{appointment.status}</span>
-              <h1>{formatPrettyDate(appointment.startAt)} â€¢ {formatPrettyTime(appointment.startAt)} UTC</h1>
+              <h1>{formatIstDateTime(appointment.startAt)}</h1>
               <p>Consultation for {personName}</p>
-              <p className="patient-summary-type">General consultation â€¢ {modeLabel}</p>
+              <p className="patient-summary-type">General consultation - {modeLabel}</p>
             </section>
 
             <section className="patient-appointment-action-card">
@@ -4971,7 +5048,7 @@ function AppointmentDetailPage() {
                   <article key={entry.id}>
                     <div className="patient-history-row-head">
                       <strong>{formatPrettyDate(entry.startAt)}</strong>
-                      <span>{formatPrettyTime(entry.startAt)} UTC</span>
+                      <span>{formatPrettyTime(entry.startAt)} IST</span>
                     </div>
                     <p>{entry.prescription?.diagnosis || 'No prescription'}</p>
                   </article>
@@ -5512,7 +5589,7 @@ function CallPage() {
     navigate(`/appointments/${appointmentId}`);
   };
 
-  if (loading) return <p className="muted">Preparing your consultation room...</p>;
+  if (loading) return <PageSkeleton title="Preparing consultation room" rows={3} />;
   if (error) return <p className="error">{error}</p>;
   if (!data?.appointment) return <p className="error">Call not available.</p>;
 
@@ -5593,9 +5670,6 @@ function CallPage() {
             </button>
           </div>
           <p className="muted">When enabled, incoming and outgoing chat messages are translated to your selected language.</p>
-          <Link className="call-ai-link" to={`/ai-copilot?appointmentId=${appointment.id}`}>
-            Open full AI Copilot workspace
-          </Link>
         </div>
 
         <div id="chatLog" className="chat-log call-chat-log" />
@@ -5917,7 +5991,7 @@ function PrescriptionPage() {
     window.speechSynthesis.speak(utterance);
   };
 
-  if (loading) return <p className="muted">Loading prescription...</p>;
+  if (loading) return <PageSkeleton title="Loading prescription" rows={4} />;
   if (error) return <p className="error">{error}</p>;
   if (!data?.appointment) return <p className="error">Prescription not found.</p>;
 
@@ -6651,7 +6725,7 @@ function AICopilotPage() {
     );
   };
 
-  if (contextLoading) return <p className="muted">Preparing AI Copilot workspace...</p>;
+  if (contextLoading) return <PageSkeleton title="Preparing AI Copilot workspace" rows={4} />;
 
   return (
     <section className="ai-sanctuary-shell">
@@ -6702,7 +6776,7 @@ function AICopilotPage() {
               <p key={draft.id}>
                 <strong>{draft.key}</strong>
                 {' - queued at '}
-                {new Date(draft.createdAt).toLocaleString()}
+                {formatIstDateTime(draft.createdAt)}
               </p>
             ))}
           </div>
@@ -7072,7 +7146,7 @@ function ProfilePage() {
     };
   }, [user?.id, user?.role]);
 
-  if (loading) return <p className="muted">Loading profile...</p>;
+  if (loading) return <PageSkeleton title="Loading profile" rows={4} />;
   if (error) return <p className="error">{error}</p>;
   if (!user) return <p className="error">Profile not found.</p>;
 
@@ -7478,7 +7552,7 @@ function PatientHealthPage() {
   const { data, setData, error, loading } = useApiPage('/api/patients/me');
   const [message, setMessage] = useState('');
 
-  if (loading) return <p className="muted">Loading health profile...</p>;
+  if (loading) return <PageSkeleton title="Loading health profile" rows={4} />;
   if (error) return <p className="error">{error}</p>;
   if (!data?.user) return <p className="error">Health profile unavailable.</p>;
 
@@ -7531,33 +7605,35 @@ function PatientWorkspacePage() {
   const [medicineResults, setMedicineResults] = useState([]);
   const [topMedicineResults, setTopMedicineResults] = useState([]);
 
-  if (loading) return <p className="muted">Loading family and records...</p>;
+  if (loading) return <PageSkeleton title="Loading family and records" rows={5} />;
   if (error) return <p className="error">{error}</p>;
   if (!data?.user) return <p className="error">Family and records unavailable.</p>;
 
   const uploadDocument = async (event) => {
     event.preventDefault();
     setFeedback('');
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const res = await apiRequest('/api/documents/upload', { method: 'POST', body: formData });
     if (!res.ok) {
       setFeedback(res.data?.error || 'Upload failed.');
       return;
     }
     setFeedback('Upload complete.');
-    event.currentTarget.reset();
+    form.reset();
   };
 
   const createFamilyMember = async (event) => {
     event.preventDefault();
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const form = event.currentTarget;
+    const body = Object.fromEntries(new FormData(form).entries());
     const res = await apiRequest('/api/patients/family-members', { method: 'POST', body });
     if (!res.ok) {
       setFeedback(res.data?.error || res.data?.message || 'Unable to add family member.');
       return;
     }
     setFeedback('Family member saved.');
-    event.currentTarget.reset();
+    form.reset();
     reload();
   };
 
@@ -7906,7 +7982,7 @@ function RemindersPage() {
     }
   };
 
-  if (loading) return <p className="muted">Loading reminders...</p>;
+  if (loading) return <PageSkeleton title="Loading reminders" rows={4} />;
   if (error) return <p className="error">{error}</p>;
 
   const summary = data?.summary || { scheduled: 0, sent: 0, failed: 0, skipped: 0 };
@@ -7992,7 +8068,8 @@ function CareSupportPage() {
     event.preventDefault();
     setFeedback('');
 
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const form = event.currentTarget;
+    const body = Object.fromEntries(new FormData(form).entries());
     const res = await apiRequest('/api/support/helpers', { method: 'POST', body });
     if (!res.ok) {
       setFeedback(res.data?.error || 'Could not save helper details.');
@@ -8000,7 +8077,7 @@ function CareSupportPage() {
     }
 
     setFeedback('Helper profile saved.');
-    event.currentTarget.reset();
+    form.reset();
     reload();
   };
 
@@ -8008,7 +8085,8 @@ function CareSupportPage() {
     event.preventDefault();
     setFeedback('');
 
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const form = event.currentTarget;
+    const body = Object.fromEntries(new FormData(form).entries());
     const res = await apiRequest('/api/support/consents', { method: 'POST', body });
     if (!res.ok) {
       setFeedback(res.data?.error || 'Could not grant consent.');
@@ -8016,7 +8094,7 @@ function CareSupportPage() {
     }
 
     setFeedback('Consent granted and logged.');
-    event.currentTarget.reset();
+    form.reset();
     reload();
   };
 
@@ -8037,7 +8115,7 @@ function CareSupportPage() {
     reload();
   };
 
-  if (loading) return <p className="muted">Loading care support...</p>;
+  if (loading) return <PageSkeleton title="Loading care support" rows={4} />;
   if (error) return <p className="error">{error}</p>;
 
   const helpers = data?.helpers || [];
@@ -8252,7 +8330,7 @@ function DoctorSlotsPage() {
     reload();
   };
 
-  if (loading) return <p className="muted">Loading slots...</p>;
+  if (loading) return <PageSkeleton title="Loading availability" rows={5} />;
   if (error) return <p className="error">{error}</p>;
 
   const slots = data?.slots || [];
@@ -8260,7 +8338,7 @@ function DoctorSlotsPage() {
     slotFilter === 'all' ? slots : slots.filter((slot) => String(slot.status || '').toLowerCase() === slotFilter);
 
   const groupedSlots = filteredSlots.reduce((acc, slot) => {
-    const key = new Date(slot.startAt).toISOString().slice(0, 10);
+    const key = istDateKey(slot.startAt);
     if (!acc[key]) acc[key] = [];
     acc[key].push(slot);
     return acc;
@@ -8269,12 +8347,17 @@ function DoctorSlotsPage() {
   const orderedDays = Object.keys(groupedSlots).sort((a, b) => new Date(a) - new Date(b));
 
   const formatDayLabel = (isoDate) => {
-    const date = new Date(isoDate);
+    const date = new Date(`${isoDate}T00:00:00+05:30`);
     if (Number.isNaN(date.getTime())) return isoDate;
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const toKey = (value) => value.toISOString().slice(0, 10);
-    const dateLabel = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const toKey = (value) => istDateKey(value);
+    const dateLabel = date.toLocaleDateString('en-IN', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: IST_TIME_ZONE
+    });
     if (toKey(date) === toKey(now)) return `Today - ${dateLabel}`;
     if (toKey(date) === toKey(tomorrow)) return `Tomorrow - ${dateLabel}`;
     return dateLabel;
@@ -8348,7 +8431,7 @@ function DoctorSlotsPage() {
 
               <div className="doctor-bulk-time-grid">
                 <label>
-                  Start Hour (UTC)
+                  Start Hour (IST)
                   <input
                     type="number"
                     min="0"
@@ -8359,7 +8442,7 @@ function DoctorSlotsPage() {
                 </label>
 
                 <label>
-                  End Hour (UTC)
+                  End Hour (IST)
                   <input
                     type="number"
                     min="1"
@@ -8424,7 +8507,7 @@ function DoctorSlotsPage() {
                             </span>
                           </div>
                           <div>
-                            <p className="doctor-slot-time">{utcDateTime(slot.startAt).slice(11, 16)} UTC</p>
+                            <p className="doctor-slot-time">{formatPrettyTime(slot.startAt)} IST</p>
                             <p className="doctor-slot-meta">
                               {status === 'booked' ? 'Reserved consultation slot' : 'Open for booking'}
                             </p>
@@ -8447,7 +8530,7 @@ function DoctorSlotsPage() {
 function DoctorAnalyticsPage() {
   const { data, error, loading } = useApiPage('/api/doctors/me/analytics');
 
-  if (loading) return <p className="muted">Loading analytics...</p>;
+  if (loading) return <PageSkeleton title="Loading analytics" rows={4} />;
   if (error) return <p className="error">{error}</p>;
 
   const dailySeries = data?.dailySeries || [];
@@ -8461,7 +8544,7 @@ function DoctorAnalyticsPage() {
   );
 
   const formatOrdinalDay = (isoDate) => {
-    const date = new Date(isoDate);
+    const date = new Date(`${isoDate}T00:00:00+05:30`);
     if (Number.isNaN(date.getTime())) return isoDate;
     const day = date.getDate();
     const j = day % 10;
@@ -8475,9 +8558,13 @@ function DoctorAnalyticsPage() {
 
   const rangeLabel =
     dailySeries.length > 1
-      ? `${new Date(dailySeries[0].day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(
+      ? `${new Date(dailySeries[0].day).toLocaleDateString('en-IN', {
+          month: 'short',
+          day: 'numeric',
+          timeZone: IST_TIME_ZONE
+        })} - ${new Date(
           dailySeries[dailySeries.length - 1].day
-        ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+        ).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', timeZone: IST_TIME_ZONE })}`
       : 'Current week';
 
   return (
