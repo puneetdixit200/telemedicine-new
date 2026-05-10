@@ -15,8 +15,10 @@ function getOptimizedDatabaseUrl() {
       return raw;
     }
 
-    if (!parsed.searchParams.get('connection_limit')) {
-      parsed.searchParams.set('connection_limit', process.env.PRISMA_CONNECTION_LIMIT || '10');
+    if (process.env.PRISMA_CONNECTION_LIMIT) {
+      parsed.searchParams.set('connection_limit', process.env.PRISMA_CONNECTION_LIMIT);
+    } else if (!parsed.searchParams.get('connection_limit')) {
+      parsed.searchParams.set('connection_limit', '10');
     }
 
     if (!parsed.searchParams.get('pool_timeout')) {

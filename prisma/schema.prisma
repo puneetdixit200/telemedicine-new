@@ -192,6 +192,8 @@ model User {
   secondOpinionAudits          SecondOpinionAudit[]          @relation("second_opinion_actor")
   referralsCreated             Referral[]                    @relation("referral_creator")
   referralsAsPatient           Referral[]                    @relation("referral_patient")
+
+  @@index([role, isActive, fullName])
 }
 
 model PatientProfile {
@@ -288,6 +290,9 @@ model Appointment {
 
   @@index([doctorId, startAt])
   @@index([patientId, startAt])
+  @@index([doctorId, status, startAt])
+  @@index([patientId, status, startAt])
+  @@index([status, startAt])
   @@index([familyMemberId])
   @@index([triageLevel])
   @@index([caseRootAppointmentId])
@@ -330,6 +335,8 @@ model CallSession {
   status    CallSessionStatus @default(ready)
   startedAt DateTime?
   endedAt   DateTime?
+
+  @@index([status, startedAt])
 }
 
 model Document {
@@ -354,6 +361,8 @@ model Document {
   labOrderReports LabOrder[] @relation("lab_order_report_document")
 
   @@index([ownerId, appointmentId, familyMemberId])
+  @@index([ownerId, createdAt])
+  @@index([ownerId, familyMemberId, createdAt])
 }
 
 model Prescription {

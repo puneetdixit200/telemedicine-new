@@ -12,6 +12,8 @@ Primary deployment path: import `https://github.com/puneetdixit200/telemedicine-
 
 Vercel will create preview deployments for non-production branches and a production deployment whenever `main` is pushed.
 
+`vercel.json` sets the function region to `sin1`, close to the Supabase `ap-southeast-1` database. Keep this unless the database region changes.
+
 ## Environment Variables
 
 Configure these in Vercel Project Settings for Production and Preview:
@@ -28,6 +30,10 @@ Configure these in Vercel Project Settings for Production and Preview:
 - `AZURE_UPLOADS_MODE=azure-only`
 - `APP_BASE_URL`
 - `READINESS_TIMEOUT_MS=5000`
+- `PRISMA_CONNECTION_LIMIT=1`
+- `SUPABASE_AUTH_CACHE_TTL_MS=30000`
+- `APP_USER_CACHE_TTL_MS=15000`
+- `DOCTOR_TRUST_CACHE_TTL_MS=60000`
 - `ADMIN_INVITE_CODE` if admin self-registration should stay restricted
 - Optional AI vars: `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_TIMEOUT_MS`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS`, `AI_RATE_LIMIT_PER_MINUTE`
 

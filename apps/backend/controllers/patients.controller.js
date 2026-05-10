@@ -6,32 +6,69 @@ const {
 } = require('../models/schemas/patients.schemas');
 
 async function loadWorkspaceData(userId) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { patientProfile: true, familyMembers: { orderBy: { fullName: 'asc' } } }
-  });
+  const [user, completedAppointments, recentDocuments] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        language: true,
+        patientProfile: true,
+        familyMembers: {
+          orderBy: { fullName: 'asc' },
+          select: {
+            id: true,
+            fullName: true,
+            relationToPatient: true,
+            gender: true,
+            dateOfBirth: true,
+            chronicConditions: true,
+            basicHealthInfo: true
+          }
+        }
+      }
+    }),
+    prisma.appointment.findMany({
+      where: { patientId: userId, status: 'completed' },
+      select: {
+        id: true,
+        startAt: true,
+        doctor: { select: { id: true, fullName: true } },
+        familyMember: { select: { id: true, fullName: true } },
+        prescription: { select: { id: true, diagnosis: true } }
+      },
+      orderBy: { startAt: 'desc' },
+      take: 50
+    }),
+    prisma.document.findMany({
+      where: { ownerId: userId },
+      select: {
+        id: true,
+        createdAt: true,
+        fileName: true,
+        contentType: true,
+        sizeBytes: true,
+        familyMember: { select: { id: true, fullName: true } },
+        appointment: { select: { id: true, startAt: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 12
+    })
+  ]);
 
-  const completedAppointments = await prisma.appointment.findMany({
-    where: { patientId: userId, status: 'completed' },
-    include: {
-      doctor: { select: { fullName: true } },
-      familyMember: { select: { fullName: true } },
-      prescription: true
-    },
-    orderBy: { startAt: 'desc' },
-    take: 100
-  });
-
-  return { user, completedAppointments };
+  return { user, completedAppointments, recentDocuments };
 }
 
 const patientsController = {
   viewWorkspace: async (req, res, next) => {
     try {
-      const { user, completedAppointments } = await loadWorkspaceData(req.user.id);
+      const { user, completedAppointments, recentDocuments } = await loadWorkspaceData(req.user.id);
       return res.render('patient-workspace', {
         user,
         completedAppointments,
+        recentDocuments,
         error: null,
         message: null
       });

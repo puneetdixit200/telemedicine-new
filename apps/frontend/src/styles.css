@@ -3564,6 +3564,279 @@ img.sanctuary-home-specialty-icon {
   grid-column: 1 / -1;
 }
 
+.patient-workspace-hero {
+  border: 1px solid rgba(188, 201, 198, 0.5);
+  border-radius: 1rem;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(232, 247, 243, 0.88)),
+    #ffffff;
+  box-shadow: 0 20px 40px rgba(25, 28, 29, 0.06);
+  padding: 1rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+  gap: 1rem;
+  align-items: end;
+}
+
+.patient-workspace-hero-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.patient-workspace-hero h2 {
+  margin: 0;
+  max-width: 760px;
+  color: #004c46;
+  font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
+  font-size: clamp(1.55rem, 4vw, 2.55rem);
+  line-height: 1.05;
+}
+
+.patient-workspace-hero p {
+  margin: 0;
+  color: #465451;
+  line-height: 1.5;
+}
+
+.patient-workspace-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.workspace-action {
+  min-height: 72px;
+  border: 1px solid #d9e5e2;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  color: #004c46;
+  text-decoration: none;
+  font: inherit;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(25, 28, 29, 0.05);
+}
+
+.workspace-action:nth-child(3),
+.workspace-action:nth-child(4) {
+  background: #fff8eb;
+  border-color: #f5d89e;
+  color: #7a4c00;
+}
+
+.workspace-action .material-symbols-outlined {
+  font-size: 1.55rem;
+}
+
+.patient-workspace-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.patient-workspace-stats article,
+.workspace-panel,
+.workspace-family-card {
+  border: 1px solid #dce3e1;
+  border-radius: 0.85rem;
+  background: #ffffff;
+  box-shadow: 0 18px 34px rgba(25, 28, 29, 0.055);
+}
+
+.patient-workspace-stats article {
+  min-height: 94px;
+  padding: 0.85rem;
+  display: grid;
+  align-content: space-between;
+  gap: 0.5rem;
+}
+
+.patient-workspace-stats span,
+.workspace-profile-list dt,
+.workspace-document-row p {
+  color: #64706d;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.patient-workspace-stats strong {
+  color: #004c46;
+  font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
+  font-size: clamp(1.05rem, 2.4vw, 1.45rem);
+  overflow-wrap: anywhere;
+}
+
+.patient-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 0.8rem;
+}
+
+.workspace-panel {
+  padding: 1rem;
+  min-width: 0;
+}
+
+.workspace-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.workspace-section-head h3,
+.workspace-add-family h4,
+.workspace-family-card h4 {
+  margin: 0;
+  color: #152321;
+  font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
+  font-weight: 800;
+}
+
+.workspace-section-icon {
+  color: #00685f;
+  font-size: 1.6rem;
+}
+
+.workspace-chip {
+  border-radius: 999px;
+  background: #edf7f4;
+  color: #00685f;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.workspace-icon-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid #dce3e1;
+  background: #f7faf9;
+  color: #00685f;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.workspace-profile-list {
+  margin: 0.75rem 0 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.workspace-profile-list div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
+  gap: 0.65rem;
+  border-top: 1px solid #edf0ef;
+  padding-top: 0.6rem;
+}
+
+.workspace-profile-list dd {
+  margin: 0;
+  color: #1f2d2b;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.workspace-upload-form,
+.workspace-add-family,
+.workspace-family-card {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.workspace-upload-form {
+  margin-top: 0.8rem;
+}
+
+.workspace-search-form,
+.workspace-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.workspace-search-form {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+}
+
+.workspace-search-form input {
+  min-width: 0;
+}
+
+.workspace-form-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.workspace-form-grid.compact textarea {
+  min-height: 74px;
+}
+
+.workspace-vault-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.workspace-document-list,
+.workspace-family-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.workspace-document-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+  border: 1px solid #e4ebe8;
+  border-radius: 0.75rem;
+  background: #f8faf9;
+  padding: 0.7rem;
+}
+
+.workspace-document-row .material-symbols-outlined {
+  color: #855300;
+  background: #fff4db;
+  border-radius: 0.65rem;
+  padding: 0.38rem;
+}
+
+.workspace-document-row strong {
+  display: block;
+  color: #152321;
+  overflow-wrap: anywhere;
+}
+
+.workspace-document-row p {
+  margin: 0.12rem 0 0;
+}
+
+.workspace-family-section {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.workspace-family-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr);
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.workspace-family-card {
+  padding: 0.85rem;
+}
+
 .journey-timeline {
   position: relative;
   display: grid;
@@ -5179,14 +5452,31 @@ img.sanctuary-home-specialty-icon {
 .pdf-preview-shell {
   display: grid;
   gap: 0.8rem;
+  min-width: 0;
 }
 
 .pdf-preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+  align-items: start;
   gap: 0.75rem;
-  flex-wrap: wrap;
+}
+
+.pdf-preview-header > div:first-child {
+  min-width: 0;
+}
+
+.pdf-preview-header h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+}
+
+.pdf-preview-actions {
+  width: min(100%, 520px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
 }
 
 .pdf-preview-audio-note {
@@ -5195,11 +5485,13 @@ img.sanctuary-home-specialty-icon {
 
 .pdf-preview-card {
   padding: 0.5rem;
+  overflow: hidden;
 }
 
 .pdf-preview-frame {
   width: 100%;
-  min-height: 78vh;
+  height: min(78vh, 900px);
+  min-height: 560px;
   border: 1px solid #dce3e1;
   border-radius: 0.8rem;
   background: #ffffff;
@@ -5211,7 +5503,8 @@ img.sanctuary-home-specialty-icon {
   }
 
   .pdf-preview-frame {
-    min-height: 68vh;
+    height: calc(100dvh - 16rem);
+    min-height: 520px;
   }
 }
 
@@ -7703,6 +7996,57 @@ img.sanctuary-home-specialty-icon {
   .journey-sub {
     font-size: 0.92rem;
   }
+
+  .patient-workspace-hero,
+  .patient-workspace-grid,
+  .workspace-family-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-workspace-hero {
+    padding: 0.85rem;
+    align-items: stretch;
+  }
+
+  .patient-workspace-hero h2 {
+    font-size: 1.55rem;
+  }
+
+  .patient-workspace-actions,
+  .patient-workspace-stats,
+  .workspace-form-grid,
+  .workspace-search-form {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-workspace-stats article,
+  .workspace-action {
+    min-height: 76px;
+  }
+
+  .workspace-profile-list div {
+    grid-template-columns: 1fr;
+    gap: 0.18rem;
+  }
+
+  .workspace-section-head {
+    align-items: stretch;
+  }
+
+  .workspace-search-form .journey-cta,
+  .workspace-upload-form .journey-cta {
+    width: 100%;
+  }
+
+  .pdf-preview-header,
+  .pdf-preview-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .pdf-preview-frame {
+    height: calc(100dvh - 18.5rem);
+    min-height: 430px;
+  }
 }
 
 @media (max-width: 520px) {
@@ -7772,6 +8116,40 @@ img.sanctuary-home-specialty-icon {
 
   .call-sidebar {
     padding-bottom: 11rem;
+  }
+
+  .patient-workspace-hero,
+  .workspace-panel,
+  .workspace-family-card {
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+  }
+
+  .patient-workspace-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-action {
+    min-height: 64px;
+    font-size: 0.82rem;
+  }
+
+  .workspace-document-row {
+    align-items: start;
+  }
+
+  .pdf-preview-shell {
+    gap: 0.6rem;
+  }
+
+  .pdf-preview-card {
+    padding: 0.35rem;
+  }
+
+  .pdf-preview-frame {
+    height: calc(100dvh - 20rem);
+    min-height: 380px;
+    border-radius: 0.55rem;
   }
 }
 

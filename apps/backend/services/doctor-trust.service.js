@@ -1,6 +1,8 @@
 const { prisma } = require('../models/db');
 
 const TRUST_WINDOW_DAYS = 90;
+const TRUST_CACHE_TTL_MS = Number(process.env.DOCTOR_TRUST_CACHE_TTL_MS || 60_000);
+const trustScoreCache = new Map();
 
 function toPercent(numerator, denominator) {
   if (!denominator) return 0;
@@ -23,6 +25,22 @@ function trustBand(score) {
   return 'new_or_recovering';
 }
 
+function defaultTrustScore() {
+  return {
+    score: 0,
+    band: 'new_or_recovering',
+    windowDays: TRUST_WINDOW_DAYS,
+    metrics: {
+      totalAppointments: 0,
+      completionRatePct: 0,
+      noShowRatePct: 0,
+      ratingAverage: 0,
+      ratingCount: 0,
+      avgResponseMinutes: null
+    }
+  };
+}
+
 function isMissingTable(error, tableName) {
   return Boolean(
     error &&
@@ -33,57 +51,7 @@ function isMissingTable(error, tableName) {
   );
 }
 
-async function computeDoctorTrustScore(doctorId) {
-  const since = new Date(Date.now() - TRUST_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-
-  const [statusRows, reviewStats, callSessions] = await Promise.all([
-    prisma.appointment.groupBy({
-      by: ['status'],
-      where: {
-        doctorId,
-        startAt: { gte: since }
-      },
-      _count: { _all: true }
-    }),
-    prisma.doctorReview
-      .aggregate({
-        where: {
-          doctorId,
-          createdAt: { gte: since }
-        },
-        _avg: { rating: true },
-        _count: { _all: true }
-      })
-      .catch((error) => {
-        if (isMissingTable(error, 'doctorreview')) {
-          return { _avg: { rating: 0 }, _count: { _all: 0 } };
-        }
-        throw error;
-      }),
-    prisma.callSession
-      .findMany({
-        where: {
-          startedAt: { not: null },
-          appointment: {
-            doctorId,
-            startAt: { gte: since }
-          }
-        },
-        select: {
-          startedAt: true,
-          appointment: { select: { startAt: true } }
-        },
-        take: 300,
-        orderBy: { startedAt: 'desc' }
-      })
-      .catch((error) => {
-        if (isMissingTable(error, 'callsession')) {
-          return [];
-        }
-        throw error;
-      })
-  ]);
-
+function buildTrustScore({ statusRows = [], reviewStats = null, callSessions = [] }) {
   const statusCountMap = statusRows.reduce((acc, row) => {
     acc[row.status] = row._count._all;
     return acc;
@@ -96,8 +64,8 @@ async function computeDoctorTrustScore(doctorId) {
   const completionRate = totalAppointments ? completedAppointments / totalAppointments : 0;
   const noShowRate = totalAppointments ? noShowAppointments / totalAppointments : 0;
 
-  const ratingAverage = Number(reviewStats._avg.rating || 0);
-  const ratingCount = Number(reviewStats._count._all || 0);
+  const ratingAverage = Number(reviewStats?._avg?.rating || 0);
+  const ratingCount = Number(reviewStats?._count?._all || 0);
   const ratingScore = ratingAverage ? Math.min(1, Math.max(0, ratingAverage / 5)) : 0.5;
 
   const responseSamples = callSessions
@@ -132,4 +100,114 @@ async function computeDoctorTrustScore(doctorId) {
   };
 }
 
-module.exports = { computeDoctorTrustScore };
+async function computeDoctorTrustScores(doctorIds) {
+  const ids = [...new Set((Array.isArray(doctorIds) ? doctorIds : []).filter(Boolean))];
+  const trustByDoctorId = new Map(ids.map((id) => [id, defaultTrustScore()]));
+  if (!ids.length) return trustByDoctorId;
+
+  const now = Date.now();
+  const idsToLoad = [];
+  ids.forEach((id) => {
+    const cached = trustScoreCache.get(id);
+    if (cached && cached.expiresAt > now) {
+      trustByDoctorId.set(id, cached.value);
+      return;
+    }
+    if (cached) trustScoreCache.delete(id);
+    idsToLoad.push(id);
+  });
+
+  if (!idsToLoad.length) return trustByDoctorId;
+
+  const since = new Date(Date.now() - TRUST_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const [statusRows, reviewStats, callSessions] = await Promise.all([
+    prisma.appointment.groupBy({
+      by: ['doctorId', 'status'],
+      where: {
+        doctorId: { in: idsToLoad },
+        startAt: { gte: since }
+      },
+      _count: { _all: true }
+    }),
+    prisma.doctorReview
+      .groupBy({
+        by: ['doctorId'],
+        where: {
+          doctorId: { in: idsToLoad },
+          createdAt: { gte: since }
+        },
+        _avg: { rating: true },
+        _count: { _all: true }
+      })
+      .catch((error) => {
+        if (isMissingTable(error, 'doctorreview')) {
+          return [];
+        }
+        throw error;
+      }),
+    prisma.callSession
+      .findMany({
+        where: {
+          startedAt: { not: null },
+          appointment: {
+            doctorId: { in: idsToLoad },
+            startAt: { gte: since }
+          }
+        },
+        select: {
+          startedAt: true,
+          appointment: { select: { doctorId: true, startAt: true } }
+        },
+        take: Math.max(300, idsToLoad.length * 120),
+        orderBy: { startedAt: 'desc' }
+      })
+      .catch((error) => {
+        if (isMissingTable(error, 'callsession')) {
+          return [];
+        }
+        throw error;
+      })
+  ]);
+
+  const statusByDoctorId = new Map();
+  statusRows.forEach((row) => {
+    const rows = statusByDoctorId.get(row.doctorId) || [];
+    rows.push(row);
+    statusByDoctorId.set(row.doctorId, rows);
+  });
+
+  const reviewsByDoctorId = new Map(reviewStats.map((row) => [row.doctorId, row]));
+  const callsByDoctorId = new Map();
+  callSessions.forEach((session) => {
+    const doctorId = session.appointment?.doctorId;
+    if (!doctorId) return;
+    const rows = callsByDoctorId.get(doctorId) || [];
+    rows.push(session);
+    callsByDoctorId.set(doctorId, rows);
+  });
+
+  idsToLoad.forEach((id) => {
+    const value = buildTrustScore({
+      statusRows: statusByDoctorId.get(id) || [],
+      reviewStats: reviewsByDoctorId.get(id) || null,
+      callSessions: callsByDoctorId.get(id) || []
+    });
+    trustByDoctorId.set(id, value);
+    if (TRUST_CACHE_TTL_MS > 0) {
+      trustScoreCache.set(id, {
+        value,
+        expiresAt: now + TRUST_CACHE_TTL_MS
+      });
+    }
+  });
+
+  return trustByDoctorId;
+}
+
+async function computeDoctorTrustScore(doctorId) {
+  const trustByDoctorId = await computeDoctorTrustScores([doctorId]);
+  return trustByDoctorId.get(doctorId) || defaultTrustScore();
+}
+
+module.exports = { computeDoctorTrustScore, computeDoctorTrustScores };

@@ -1,7 +1,15 @@
+const inflightGetRequests = new Map();
+
 export async function apiRequest(path, options = {}) {
   const headers = new Headers(options.headers || {});
+  const method = options.method || 'GET';
+  const inflightKey = method === 'GET' && options.body === undefined ? path : '';
+  if (inflightKey && inflightGetRequests.has(inflightKey)) {
+    return inflightGetRequests.get(inflightKey);
+  }
+
   const requestOptions = {
-    method: options.method || 'GET',
+    method,
     credentials: 'include',
     headers
   };
@@ -19,22 +27,34 @@ export async function apiRequest(path, options = {}) {
     headers.set('Accept', 'application/json');
   }
 
-  const res = await fetch(path, requestOptions);
-  const contentType = res.headers.get('content-type') || '';
+  const requestPromise = (async () => {
+    const res = await fetch(path, requestOptions);
+    const contentType = res.headers.get('content-type') || '';
 
-  let data;
-  if (contentType.includes('application/json')) {
-    data = await res.json();
-  } else {
-    data = await res.text();
+    let data;
+    if (contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      data = await res.text();
+    }
+
+    return {
+      ok: res.ok,
+      status: res.status,
+      data,
+      headers: res.headers
+    };
+  })();
+
+  if (inflightKey) {
+    inflightGetRequests.set(inflightKey, requestPromise);
+    requestPromise.then(
+      () => inflightGetRequests.delete(inflightKey),
+      () => inflightGetRequests.delete(inflightKey)
+    );
   }
 
-  return {
-    ok: res.ok,
-    status: res.status,
-    data,
-    headers: res.headers
-  };
+  return requestPromise;
 }
 
 const IST_TIME_ZONE = 'Asia/Kolkata';

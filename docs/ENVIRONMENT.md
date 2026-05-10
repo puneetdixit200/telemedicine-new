@@ -10,6 +10,7 @@ Use `.env.local.example` as the local template and keep real secrets out of git.
 - `DATABASE_URL`: Supabase Postgres connection string for Prisma and compatibility API code.
 - `DIRECT_URL`: optional direct database URL for migrations and local admin tasks.
 - `APP_BASE_URL`: public app URL, for example `https://telemedicine-new.vercel.app`.
+- `PRISMA_CONNECTION_LIMIT`: optional override for Supabase Session Pooler URLs. Use `1` on Vercel/serverless to avoid exhausting Supabase session pool slots; a single long-running local/custom server can use `3`.
 
 ## Required for Azure Blob Storage
 
@@ -41,6 +42,8 @@ Set these for Production and Preview in the Vercel project:
 - `AZURE_UPLOADS_MODE=azure-only`
 - `APP_BASE_URL`
 - `READINESS_TIMEOUT_MS`
+- `PRISMA_CONNECTION_LIMIT=1`
+- Optional performance cache vars: `SUPABASE_AUTH_CACHE_TTL_MS`, `APP_USER_CACHE_TTL_MS`, `DOCTOR_TRUST_CACHE_TTL_MS`.
 - Optional AI vars: `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_TIMEOUT_MS`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS`, `AI_RATE_LIMIT_PER_MINUTE`.
 
 ## Optional
@@ -56,3 +59,4 @@ Set these for Production and Preview in the Vercel project:
 - User-facing dates and times are formatted in Indian Standard Time (`Asia/Kolkata`).
 - Azure-only document uploads require valid Azure credentials. For local testing without Azure, set `AZURE_UPLOADS_MODE=local-only`.
 - OpenRouter is used before Ollama when `OPENROUTER_API_KEY` is set. The default free model is `openai/gpt-oss-120b:free`.
+- `vercel.json` pins serverless API execution to Singapore (`sin1`) so Vercel functions run closer to the Supabase `ap-southeast-1` database.

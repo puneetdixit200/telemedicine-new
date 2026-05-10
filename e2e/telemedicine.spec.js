@@ -52,6 +52,40 @@ test.describe('production demo smoke flows', () => {
     await expect(page.locator('body')).toContainText(/profile|account|asha/i);
   });
 
+  test('patient workspace and prescription preview fit mobile screens', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page, DEMO_USERS.patient);
+
+    await page.goto('/patients/workspace');
+    await expect(page.locator('body')).toContainText(/patient workspace|health card|family care/i);
+    await page.getByRole('button', { name: /medicines/i }).click();
+    await expect(page.locator('body')).toContainText(/search any medicine/i);
+
+    const workspaceOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(workspaceOverflow).toBeLessThanOrEqual(1);
+
+    const appointmentsRes = await page.request.get('/api/appointments');
+    expect(appointmentsRes.ok()).toBeTruthy();
+    const appointmentsBody = await appointmentsRes.json();
+    const appointmentWithPrescription = [
+      ...(appointmentsBody.upcomingAppointments || []),
+      ...(appointmentsBody.doneAppointments || [])
+    ].find((appointment) => appointment.prescription?.id);
+
+    expect(appointmentWithPrescription?.id).toBeTruthy();
+    const appointmentId = appointmentWithPrescription.id;
+    await page.goto(
+      `/pdf-preview?src=${encodeURIComponent(`/api/prescriptions/${appointmentId}/pdf`)}` +
+        `&download=${encodeURIComponent(`/api/prescriptions/${appointmentId}/pdf?download=1`)}` +
+        `&title=${encodeURIComponent(`Prescription ${appointmentId}`)}` +
+        `&appointmentId=${encodeURIComponent(appointmentId)}`
+    );
+
+    await expect(page.locator('body')).toContainText(/in-app preview|listen prescription|download/i);
+    const pdfOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(pdfOverflow).toBeLessThanOrEqual(1);
+  });
+
   test('doctor can login and inspect appointments, slots, analytics, and patient access', async ({ page }) => {
     await login(page, DEMO_USERS.doctor);
 

@@ -3259,7 +3259,7 @@ function PharmacyOrdersPage() {
         <p className="kicker">Medical Store</p>
         <h2>Pharmacy Orders</h2>
         <p className="muted">Track medication order lifecycle from handoff to fulfillment.</p>
-        <div className="row-inline wrap">
+        <div className="pdf-preview-actions">
           <span className="pill">Placed: {summary.placed || 0}</span>
           <span className="pill">Processing: {summary.processing || 0}</span>
           <span className="pill">Ready: {summary.ready || 0}</span>
@@ -3935,8 +3935,15 @@ function useApiPage(path) {
   );
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError('');
+    const cachedBeforeFetch = readCached();
+    if (cachedBeforeFetch) {
+      setData(cachedBeforeFetch.data);
+      setCacheMeta({ fromCache: true, cachedAt: cachedBeforeFetch.cachedAt || null });
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const res = await apiRequest(path);
@@ -7621,6 +7628,7 @@ function PatientWorkspacePage() {
     }
     setFeedback('Upload complete.');
     form.reset();
+    reload();
   };
 
   const createFamilyMember = async (event) => {
@@ -7706,41 +7714,81 @@ function PatientWorkspacePage() {
     }
   };
 
-  const latestCompleted = (data.completedAppointments || [])[0] || null;
+  const familyMembers = data.user.familyMembers || [];
+  const completedAppointments = data.completedAppointments || [];
+  const recentDocuments = data.recentDocuments || [];
+  const latestCompleted = completedAppointments[0] || null;
   const shownMedicines = medicineResults.length ? medicineResults : topMedicineResults;
+  const workspaceStats = [
+    { label: 'Family profiles', value: familyMembers.length },
+    { label: 'Completed visits', value: completedAppointments.length },
+    { label: 'Vault files', value: recentDocuments.length },
+    { label: 'Latest visit', value: latestCompleted ? formatPrettyDate(latestCompleted.startAt) : 'None yet' }
+  ];
 
   return (
     <>
-      <section className="journey-hero">
-        <h2 className="journey-title">Patient Workspace</h2>
-        <p className="journey-sub">Manage your personal profile, family members, and health history in your digital sanctuary.</p>
-        <div className="row-inline wrap">
-          <button type="button" className="journey-cta secondary" onClick={toggleMedicineSearch}>
-            {medicineSearchOpen ? 'Hide Medicine Search' : 'Search Any Medicine'}
+      <section className="patient-workspace-hero">
+        <div className="patient-workspace-hero-copy">
+          <p className="kicker">Patient Workspace</p>
+          <h2>Health records, family care, and medicines in one place</h2>
+          <p>
+            Keep the essentials ready before every consultation: profile details, family records, uploaded reports,
+            prescriptions, and medicine guidance.
+          </p>
+        </div>
+        <div className="patient-workspace-actions" aria-label="Patient workspace shortcuts">
+          <Link className="workspace-action" to="/book">
+            <span className="material-symbols-outlined" aria-hidden="true">event_available</span>
+            <span>Book</span>
+          </Link>
+          <Link className="workspace-action" to="/appointments">
+            <span className="material-symbols-outlined" aria-hidden="true">clinical_notes</span>
+            <span>Visits</span>
+          </Link>
+          <button type="button" className="workspace-action" onClick={toggleMedicineSearch}>
+            <span className="material-symbols-outlined" aria-hidden="true">medication</span>
+            <span>{medicineSearchOpen ? 'Hide Search' : 'Medicines'}</span>
+          </button>
+          <button type="button" className="workspace-action" onClick={printHealthCard}>
+            <span className="material-symbols-outlined" aria-hidden="true">print</span>
+            <span>Print Card</span>
           </button>
         </div>
         {feedback ? <p className="journey-status-note">{feedback}</p> : null}
       </section>
 
+      <section className="patient-workspace-stats" aria-label="Workspace summary">
+        {workspaceStats.map((stat) => (
+          <article key={stat.label}>
+            <span>{stat.label}</span>
+            <strong>{stat.value}</strong>
+          </article>
+        ))}
+      </section>
+
       {medicineSearchOpen ? (
-        <section className="card medicine-search-card" id="medicine-search">
-          <p className="kicker">Health Tool</p>
-          <h3>Search Any Medicine (India Top 100)</h3>
-          <p className="muted">
-            Search medicine names to view common uses and potential side effects. This is educational guidance and does not replace your doctor advice.
-          </p>
-          <form className="row-inline wrap medicine-search-form" onSubmit={searchMedicines}>
+        <section className="workspace-panel medicine-search-card" id="medicine-search">
+          <div className="workspace-section-head">
+            <div>
+              <p className="kicker">Health Tool</p>
+              <h3>Search Any Medicine</h3>
+            </div>
+            <span className="workspace-chip">India Top 100</span>
+          </div>
+          <p className="muted">Search medicine names to view common uses and potential side effects.</p>
+          <form className="workspace-search-form" onSubmit={searchMedicines}>
             <input
               value={medicineQuery}
               onChange={(event) => setMedicineQuery(event.target.value)}
-              placeholder="Type medicine name (e.g., Metformin)"
+              placeholder="Type medicine name, for example Metformin"
               aria-label="Search any medicine"
             />
             <button type="submit" className="journey-cta subtle" disabled={medicineSearchBusy}>
               {medicineSearchBusy ? 'Searching...' : 'Search'}
             </button>
             <button type="button" className="journey-cta subtle" onClick={loadTopMedicines} disabled={medicineSearchBusy}>
-              Show Top Medicines
+              Top Medicines
             </button>
           </form>
 
@@ -7768,36 +7816,64 @@ function PatientWorkspacePage() {
         </section>
       ) : null}
 
-      <section className="card print-health-card">
-        <p className="kicker">Printable summary</p>
-        <h3>Patient Health Card</h3>
-        <p><strong>Name:</strong> {data.user.fullName}</p>
-        <p><strong>Phone:</strong> {data.user.phone || 'Not available'}</p>
-        <p><strong>Email:</strong> {data.user.email || 'Not available'}</p>
-        <p><strong>Chronic Conditions:</strong> {data.user.patientProfile?.chronicConditions || 'None listed'}</p>
-        <p><strong>Basic Health Info:</strong> {data.user.patientProfile?.basicHealthInfo || 'None listed'}</p>
-        <p>
-          <strong>Latest Consultation:</strong>{' '}
-          {latestCompleted ? `${formatPrettyDate(latestCompleted.startAt)} with Dr. ${latestCompleted.doctor?.fullName || 'Doctor'}` : 'No completed visit yet'}
-        </p>
-        <button type="button" className="journey-cta secondary" onClick={printHealthCard}>
-          Print Health Card
-        </button>
-      </section>
+      <section className="patient-workspace-grid">
+        <article className="workspace-panel print-health-card">
+          <div className="workspace-section-head">
+            <div>
+              <p className="kicker">Printable Summary</p>
+              <h3>Patient Health Card</h3>
+            </div>
+            <button type="button" className="workspace-icon-btn" onClick={printHealthCard} aria-label="Print health card">
+              <span className="material-symbols-outlined" aria-hidden="true">print</span>
+            </button>
+          </div>
+          <dl className="workspace-profile-list">
+            <div>
+              <dt>Name</dt>
+              <dd>{data.user.fullName}</dd>
+            </div>
+            <div>
+              <dt>Phone</dt>
+              <dd>{data.user.phone || 'Not available'}</dd>
+            </div>
+            <div>
+              <dt>Email</dt>
+              <dd>{data.user.email || 'Not available'}</dd>
+            </div>
+            <div>
+              <dt>Chronic Conditions</dt>
+              <dd>{data.user.patientProfile?.chronicConditions || 'None listed'}</dd>
+            </div>
+            <div>
+              <dt>Basic Health Info</dt>
+              <dd>{data.user.patientProfile?.basicHealthInfo || 'None listed'}</dd>
+            </div>
+            <div>
+              <dt>Latest Consultation</dt>
+              <dd>
+                {latestCompleted
+                  ? `${formatPrettyDate(latestCompleted.startAt)} with Dr. ${latestCompleted.doctor?.fullName || 'Doctor'}`
+                  : 'No completed visit yet'}
+              </dd>
+            </div>
+          </dl>
+        </article>
 
-      <section className="journey-workspace-grid">
-        <article className="journey-upload-card">
-          <div className="journey-form-head">
-            <span className="material-symbols-outlined" aria-hidden="true">cloud_upload</span>
-            <h3>Upload Medical Document</h3>
+        <article className="workspace-panel">
+          <div className="workspace-section-head">
+            <div>
+              <p className="kicker">Health Vault</p>
+              <h3>Upload Medical Document</h3>
+            </div>
+            <span className="material-symbols-outlined workspace-section-icon" aria-hidden="true">cloud_upload</span>
           </div>
 
-          <form className="stack" onSubmit={uploadDocument}>
+          <form className="workspace-upload-form" onSubmit={uploadDocument}>
             <label>
               Upload for
               <select name="uploadFor" defaultValue="user" required>
                 <option value="user">{data.user.fullName} (Self)</option>
-                {(data.user.familyMembers || []).map((member) => (
+                {familyMembers.map((member) => (
                   <option key={member.id} value={member.id}>
                     {member.fullName}
                     {member.relationToPatient ? ` (${member.relationToPatient})` : ''}
@@ -7808,99 +7884,130 @@ function PatientWorkspacePage() {
 
             <label>
               File
-              <input type="file" name="file" required />
+              <input type="file" name="file" accept=".pdf,image/*,.doc,.docx" required />
             </label>
 
             <button type="submit" className="journey-cta">Upload Document</button>
           </form>
         </article>
-
-        <article className="journey-family-sidebar">
-          <h3>Family Members</h3>
-          {(data.user.familyMembers || []).length === 0 ? <p className="journey-empty-note">No family members yet.</p> : null}
-          {(data.user.familyMembers || []).map((member) => (
-            <form className="journey-family-card" key={member.id} onSubmit={updateFamilyMember}>
-              <input type="hidden" name="familyMemberId" defaultValue={member.id} />
-              <div className="journey-family-card-head">
-                <h4>{member.fullName}</h4>
-                <span>{member.relationToPatient || 'Family'}</span>
-              </div>
-
-              <div className="journey-family-grid">
-                <label>
-                  Full name
-                  <input name="fullName" defaultValue={member.fullName || ''} required />
-                </label>
-                <label>
-                  Relation
-                  <input name="relationToPatient" defaultValue={member.relationToPatient || ''} />
-                </label>
-                <label>
-                  Gender
-                  <input name="gender" defaultValue={member.gender || ''} />
-                </label>
-                <label>
-                  Date of birth
-                  <input
-                    type="date"
-                    name="dateOfBirth"
-                    defaultValue={member.dateOfBirth ? new Date(member.dateOfBirth).toISOString().slice(0, 10) : ''}
-                  />
-                </label>
-              </div>
-
-              <label>
-                Health info
-                <textarea name="basicHealthInfo" defaultValue={member.basicHealthInfo || ''} />
-              </label>
-
-              <label>
-                Chronic conditions
-                <textarea name="chronicConditions" defaultValue={member.chronicConditions || ''} />
-              </label>
-
-              <button type="submit" className="journey-cta subtle full">Update</button>
-            </form>
-          ))}
-        </article>
       </section>
 
-      <section className="journey-editorial-card">
-        <div className="journey-editorial-copy">
-          <h3>Add Family Member</h3>
-          <p>
-            Ensure everyone in your household gets the best care. Adding family members allows quick appointment booking
-            and shared health records.
-          </p>
+      <section className="workspace-panel workspace-vault-list">
+        <div className="workspace-section-head">
+          <div>
+            <p className="kicker">Recent Files</p>
+            <h3>Attached Documents</h3>
+          </div>
+          <span className="workspace-chip">{recentDocuments.length} shown</span>
+        </div>
+        {recentDocuments.length === 0 ? <p className="journey-empty-note">No documents attached yet.</p> : null}
+        {recentDocuments.length ? (
+          <div className="workspace-document-list">
+            {recentDocuments.map((doc) => (
+              <article className="workspace-document-row" key={doc.id}>
+                <span className="material-symbols-outlined" aria-hidden="true">
+                  {String(doc.contentType || '').includes('pdf') ? 'picture_as_pdf' : 'description'}
+                </span>
+                <div>
+                  <strong>{doc.fileName}</strong>
+                  <p>
+                    {doc.familyMember?.fullName || data.user.fullName} - {Math.max(1, Math.round((doc.sizeBytes || 0) / 1024))} KB
+                    {doc.appointment?.startAt ? ` - Visit ${formatPrettyDate(doc.appointment.startAt)}` : ''}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="workspace-family-section">
+        <div className="workspace-section-head">
+          <div>
+            <p className="kicker">Family Care</p>
+            <h3>Dependents and shared records</h3>
+          </div>
+          <span className="workspace-chip">{familyMembers.length} members</span>
         </div>
 
-        <form className="journey-editorial-form" onSubmit={createFamilyMember}>
-          <label>
-            Full name
-            <input name="fullName" required />
-          </label>
-          <label>
-            Relation
-            <input name="relationToPatient" />
-          </label>
-          <label>
-            Gender
-            <input name="gender" />
-          </label>
-          <label>
-            Date of birth
-            <input type="date" name="dateOfBirth" />
-          </label>
-          <label className="wide">
-            Chronic conditions
-            <textarea name="chronicConditions" />
-          </label>
-          <label className="wide">
-            Basic health info
-            <textarea name="basicHealthInfo" />
-          </label>
-          <button type="submit" className="journey-cta secondary wide">Save Family Member</button>
-        </form>
+        <div className="workspace-family-layout">
+          <form className="workspace-panel workspace-add-family" onSubmit={createFamilyMember}>
+            <h4>Add Family Member</h4>
+            <div className="workspace-form-grid">
+              <label>
+                Full name
+                <input name="fullName" required />
+              </label>
+              <label>
+                Relation
+                <input name="relationToPatient" />
+              </label>
+              <label>
+                Gender
+                <input name="gender" />
+              </label>
+              <label>
+                Date of birth
+                <input type="date" name="dateOfBirth" />
+              </label>
+              <label className="wide">
+                Chronic conditions
+                <textarea name="chronicConditions" />
+              </label>
+              <label className="wide">
+                Basic health info
+                <textarea name="basicHealthInfo" />
+              </label>
+            </div>
+            <button type="submit" className="journey-cta secondary full">Save Family Member</button>
+          </form>
+
+          <div className="workspace-family-list">
+            {familyMembers.length === 0 ? <p className="journey-empty-note">No family members yet.</p> : null}
+            {familyMembers.map((member) => (
+              <form className="workspace-family-card" key={member.id} onSubmit={updateFamilyMember}>
+                <input type="hidden" name="familyMemberId" defaultValue={member.id} />
+                <div className="journey-family-card-head">
+                  <h4>{member.fullName}</h4>
+                  <span>{member.relationToPatient || 'Family'}</span>
+                </div>
+
+                <div className="workspace-form-grid compact">
+                  <label>
+                    Full name
+                    <input name="fullName" defaultValue={member.fullName || ''} required />
+                  </label>
+                  <label>
+                    Relation
+                    <input name="relationToPatient" defaultValue={member.relationToPatient || ''} />
+                  </label>
+                  <label>
+                    Gender
+                    <input name="gender" defaultValue={member.gender || ''} />
+                  </label>
+                  <label>
+                    Date of birth
+                    <input
+                      type="date"
+                      name="dateOfBirth"
+                      defaultValue={member.dateOfBirth ? new Date(member.dateOfBirth).toISOString().slice(0, 10) : ''}
+                    />
+                  </label>
+                  <label className="wide">
+                    Health info
+                    <textarea name="basicHealthInfo" defaultValue={member.basicHealthInfo || ''} />
+                  </label>
+                  <label className="wide">
+                    Chronic conditions
+                    <textarea name="chronicConditions" defaultValue={member.chronicConditions || ''} />
+                  </label>
+                </div>
+
+                <button type="submit" className="journey-cta subtle full">Update Member</button>
+              </form>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="journey-section">
@@ -7908,12 +8015,12 @@ function PatientWorkspacePage() {
           <h3>Consultation History</h3>
         </div>
 
-        {(data.completedAppointments || []).length === 0 ? (
+        {completedAppointments.length === 0 ? (
           <p className="journey-empty-note">No completed consultations yet.</p>
         ) : null}
 
         <div className="journey-timeline">
-          {(data.completedAppointments || []).map((appointment) => (
+          {completedAppointments.map((appointment) => (
             <article className="journey-timeline-item" key={appointment.id}>
               <div className="journey-timeline-dot" aria-hidden="true" />
               <div className="journey-timeline-card">

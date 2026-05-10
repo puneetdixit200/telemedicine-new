@@ -94,6 +94,7 @@ Reference file: `.env.example`
 - `PORT`
 - `NODE_ENV`
 - `DATABASE_URL`
+- `PRISMA_CONNECTION_LIMIT` (recommended `1` on Vercel/serverless with Supabase Session Pooler)
 - `JWT_SECRET`
 - `JWT_EXPIRES_IN`
 
@@ -123,6 +124,7 @@ Reference file: `.env.example`
 ### 6.5 Operations
 
 - `APPLICATIONINSIGHTS_CONNECTION_STRING` (optional)
+- `SUPABASE_AUTH_CACHE_TTL_MS`, `APP_USER_CACHE_TTL_MS`, `DOCTOR_TRUST_CACHE_TTL_MS` for short-lived performance caches
 - `ENABLE_REMINDER_CRON` (`true` to auto-dispatch)
 - `REMINDER_CRON_INTERVAL_MS`
 - `REMINDER_CRON_BATCH_LIMIT`

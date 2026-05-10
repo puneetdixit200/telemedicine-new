@@ -1,7 +1,7 @@
 const { prisma } = require('../models/db');
 const { bulkSchema, callStateSchema } = require('../models/schemas/doctors.schemas');
 const { isRecentlyOnline } = require('../services/presence.service');
-const { computeDoctorTrustScore } = require('../services/doctor-trust.service');
+const { computeDoctorTrustScore, computeDoctorTrustScores } = require('../services/doctor-trust.service');
 
 function isMissingDoctorReviewTable(error) {
   return Boolean(
@@ -129,41 +129,20 @@ const doctorsController = {
       });
 
       const doctorIds = doctors.map((d) => d.id);
-      let ratingRows = [];
-      if (doctorIds.length) {
-        try {
-          ratingRows = await prisma.doctorReview.groupBy({
-            by: ['doctorId'],
-            where: { doctorId: { in: doctorIds } },
-            _avg: { rating: true },
-            _count: { _all: true }
-          });
-        } catch (error) {
-          if (!isMissingDoctorReviewTable(error)) throw error;
-        }
+      let trustByDoctorId = new Map();
+      try {
+        trustByDoctorId = await computeDoctorTrustScores(doctorIds);
+      } catch (_error) {
+        trustByDoctorId = new Map();
       }
-      const ratingsByDoctorId = new Map(
-        ratingRows.map((row) => [row.doctorId, { average: row._avg.rating || 0, count: row._count._all || 0 }])
-      );
 
-      const doctorsWithStatus = await Promise.all(
-        doctors.map(async (d) => {
-          let trust = { score: 0, band: 'new_or_recovering', metrics: null };
-          try {
-            trust = await computeDoctorTrustScore(d.id);
-          } catch (_error) {
-            trust = { score: 0, band: 'new_or_recovering', metrics: null };
-          }
-
-          return {
-            ...d,
-            online: Boolean(d.doctorProfile?.callEnabled) && isRecentlyOnline(d.lastSeenAt),
-            ratingAverage: ratingsByDoctorId.get(d.id)?.average || 0,
-            ratingCount: ratingsByDoctorId.get(d.id)?.count || 0,
-            trust
-          };
-        })
-      );
+      const doctorsWithStatus = doctors.map((d) => ({
+        ...d,
+        online: Boolean(d.doctorProfile?.callEnabled) && isRecentlyOnline(d.lastSeenAt),
+        ratingAverage: trustByDoctorId.get(d.id)?.metrics?.ratingAverage || 0,
+        ratingCount: trustByDoctorId.get(d.id)?.metrics?.ratingCount || 0,
+        trust: trustByDoctorId.get(d.id) || { score: 0, band: 'new_or_recovering', metrics: null }
+      }));
 
       const doctorsFiltered =
         online === 'online'

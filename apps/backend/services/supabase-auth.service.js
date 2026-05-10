@@ -1,7 +1,10 @@
 const { createServerClient } = require('@supabase/ssr');
 const { createClient } = require('@supabase/supabase-js');
+const { createHash } = require('crypto');
 
 let adminClient;
+const AUTH_USER_CACHE_TTL_MS = Number(process.env.SUPABASE_AUTH_CACHE_TTL_MS || 30_000);
+const authUserCache = new Map();
 
 function getSupabaseUrl() {
   return process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
@@ -67,6 +70,30 @@ function createSupabaseExpressClient(req, res) {
   });
 }
 
+function getSupabaseSessionCacheKey(req) {
+  const cookies = req?.cookies || {};
+  const sessionCookies = Object.entries(cookies)
+    .filter(([name, value]) => /^sb-.+-auth-token(?:\.\d+)?$/i.test(name) && value)
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  if (!sessionCookies.length) return '';
+
+  const fingerprint = sessionCookies.map(([name, value]) => `${name}=${value}`).join(';');
+  return createHash('sha256').update(fingerprint).digest('hex');
+}
+
+function pruneAuthUserCache(now = Date.now()) {
+  if (authUserCache.size < 500) return;
+  for (const [key, entry] of authUserCache.entries()) {
+    if (!entry || entry.expiresAt <= now) authUserCache.delete(key);
+  }
+}
+
+function clearAuthUserCache(req) {
+  const key = getSupabaseSessionCacheKey(req);
+  if (key) authUserCache.delete(key);
+}
+
 async function signInWithPassword(req, res, { email, password }) {
   const supabase = createSupabaseExpressClient(req, res);
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -79,14 +106,33 @@ async function signInWithPassword(req, res, { email, password }) {
 }
 
 async function signOut(req, res) {
+  clearAuthUserCache(req);
   const supabase = createSupabaseExpressClient(req, res);
   await supabase.auth.signOut();
 }
 
 async function getAuthenticatedSupabaseUser(req, res) {
+  const cacheKey = getSupabaseSessionCacheKey(req);
+  const now = Date.now();
+
+  if (cacheKey) {
+    const cached = authUserCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) return cached.user;
+    if (cached) authUserCache.delete(cacheKey);
+  }
+
   const supabase = createSupabaseExpressClient(req, res);
   const { data, error } = await supabase.auth.getUser();
   if (error || !data?.user) return null;
+
+  if (cacheKey && AUTH_USER_CACHE_TTL_MS > 0) {
+    pruneAuthUserCache(now);
+    authUserCache.set(cacheKey, {
+      user: data.user,
+      expiresAt: now + AUTH_USER_CACHE_TTL_MS
+    });
+  }
+
   return data.user;
 }
 
@@ -139,12 +185,14 @@ async function createOrUpdateAuthUser({ email, password, role, fullName, localUs
 }
 
 module.exports = {
+  clearAuthUserCache,
   createOrUpdateAuthUser,
   createSupabaseExpressClient,
   findAuthUserByEmail,
   getAuthenticatedSupabaseUser,
   getSupabaseAdminClient,
   getSupabaseAnonKey,
+  getSupabaseSessionCacheKey,
   getSupabaseUrl,
   signInWithPassword,
   signOut
