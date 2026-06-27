@@ -46,7 +46,15 @@ let chatTranslationEnabled = false;
 let chatTargetLanguage = 'English';
 const translationCache = new Map();
 const SIGNALING_READY_TIMEOUT_MS = 8000;
+const REMOTE_DATA_TIMEOUT_MS = 5000;
+const REMOTE_DATA_CHECK_INTERVAL_MS = 1000;
+const REMOTE_DATA_RELOAD_COOLDOWN_MS = 30000;
+const CALL_AUTO_RELOAD_STORAGE_KEY = `call:autoReload:${cfg.appointmentId}`;
 let remoteEndInProgress = false;
+let remoteDataWatchdogTimer = null;
+let lastRemoteDataAt = 0;
+let lastRemotePayloadReceived = 0;
+let autoReloadPending = false;
 
 // Doctor acts as the stable offerer by default; patient is the polite peer.
 const isPolitePeer = cfg.userRole === 'patient';
@@ -245,6 +253,7 @@ function leaveRoomFromRemoteEnd() {
   remoteEndInProgress = true;
   setStatus('ended');
   appendChat('[System] The consultation was ended by the other participant.');
+  clearRemoteDataWatchdog();
   disposePeerConnection();
   stopLocalMedia();
   updateModeControls();
@@ -266,6 +275,7 @@ function stopLocalMedia() {
 }
 
 function disposePeerConnection() {
+  clearRemoteDataWatchdog();
   if (!pc) return;
   try {
     pc.onicecandidate = null;
@@ -278,6 +288,105 @@ function disposePeerConnection() {
   pc = null;
   remoteVideo.srcObject = null;
   pendingIceCandidates.length = 0;
+}
+
+function canAutoReloadCall() {
+  try {
+    const lastReloadedAt = Number(window.sessionStorage.getItem(CALL_AUTO_RELOAD_STORAGE_KEY) || '0');
+    return !lastReloadedAt || Date.now() - lastReloadedAt > REMOTE_DATA_RELOAD_COOLDOWN_MS;
+  } catch (_err) {
+    return true;
+  }
+}
+
+function markAutoReloadCall() {
+  try {
+    window.sessionStorage.setItem(CALL_AUTO_RELOAD_STORAGE_KEY, String(Date.now()));
+  } catch (_err) {}
+}
+
+function reloadCallPageForDataStall(reason) {
+  if (autoReloadPending || remoteEndInProgress) return;
+
+  if (!canAutoReloadCall()) {
+    logRtc('remote_data_reload_suppressed', { reason });
+    return;
+  }
+
+  autoReloadPending = true;
+  markAutoReloadCall();
+  logRtc('remote_data_stalled_reload', { reason });
+  setStatus('reloading_call');
+  appendChat('[System] Call data stopped coming through. Refreshing the room...');
+
+  setTimeout(() => {
+    window.location.reload();
+  }, 250);
+}
+
+function clearRemoteDataWatchdog() {
+  if (remoteDataWatchdogTimer) {
+    clearInterval(remoteDataWatchdogTimer);
+    remoteDataWatchdogTimer = null;
+  }
+  lastRemoteDataAt = 0;
+  lastRemotePayloadReceived = 0;
+}
+
+function remotePayloadFromStatsReport(report) {
+  const kind = report.kind || report.mediaType;
+  if (report.type !== 'inbound-rtp' || (kind !== 'audio' && kind !== 'video')) {
+    return 0;
+  }
+
+  const bytes = Number(report.bytesReceived || 0);
+  if (bytes > 0) return bytes;
+  return Number(report.packetsReceived || 0);
+}
+
+async function checkRemoteDataFlow() {
+  const observedPc = pc;
+  if (!observedPc || currentMode === 'text' || remoteEndInProgress || autoReloadPending) {
+    clearRemoteDataWatchdog();
+    return;
+  }
+
+  let remotePayloadReceived = 0;
+  try {
+    const stats = await observedPc.getStats();
+    stats.forEach((report) => {
+      remotePayloadReceived += remotePayloadFromStatsReport(report);
+    });
+  } catch (error) {
+    logRtc('remote_data_stats_error', { message: error.message });
+    return;
+  }
+
+  if (observedPc !== pc) return;
+
+  if (remotePayloadReceived > lastRemotePayloadReceived) {
+    lastRemotePayloadReceived = remotePayloadReceived;
+    lastRemoteDataAt = Date.now();
+    return;
+  }
+
+  if (lastRemoteDataAt && Date.now() - lastRemoteDataAt >= REMOTE_DATA_TIMEOUT_MS) {
+    reloadCallPageForDataStall('remote_payload_timeout');
+  }
+}
+
+function startRemoteDataWatchdog(reason) {
+  if (currentMode === 'text' || remoteEndInProgress || autoReloadPending) return;
+  lastRemoteDataAt = Date.now();
+
+  if (!remoteDataWatchdogTimer) {
+    logRtc('remote_data_watchdog_started', { reason, timeoutMs: REMOTE_DATA_TIMEOUT_MS });
+    remoteDataWatchdogTimer = setInterval(() => {
+      checkRemoteDataFlow().catch((error) => {
+        console.error('[CALL][RTC] remote data watchdog failed', error);
+      });
+    }, REMOTE_DATA_CHECK_INTERVAL_MS);
+  }
 }
 
 function clearDegradeTimer() {
@@ -632,6 +741,7 @@ async function setupPeerConnection() {
   pc.ontrack = (event) => {
     logRtc('remote_track_received', { streams: event.streams ? event.streams.length : 0 });
     remoteVideo.srcObject = event.streams[0];
+    startRemoteDataWatchdog('remote_track');
   };
 
   pc.onconnectionstatechange = () => {
@@ -640,10 +750,12 @@ async function setupPeerConnection() {
 
     if (pc.connectionState === 'connected') {
       clearDegradeTimer();
+      startRemoteDataWatchdog('peer_connected');
       return;
     }
 
     if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+      startRemoteDataWatchdog(`connection_${pc.connectionState}`);
       scheduleAutoDowngrade(`connection_${pc.connectionState}`);
     }
   };
@@ -688,6 +800,7 @@ async function maybeMakeOffer() {
 
 async function startMode(mode) {
   clearDegradeTimer();
+  clearRemoteDataWatchdog();
 
   if (
     mode === 'video' &&
