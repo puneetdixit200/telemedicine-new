@@ -14,6 +14,8 @@ import { apiRequest, utcDateTime } from './lib/api';
 import TranslationService from './TranslationService';
 import InnovationHubPage from './pages/InnovationHubPage';
 import DoctorPatientAccessPage from './pages/DoctorPatientAccessPage';
+import AgentPlanPanel from './components/AgentPlanPanel';
+import PatientNotificationBanner from './components/PatientNotificationBanner';
 
 const SessionContext = createContext(null);
 const RuralSupportContext = createContext(null);
@@ -648,6 +650,8 @@ function App() {
     }
   });
   const [outboxCount, setOutboxCount] = useState(0);
+  const [patientNotifications, setPatientNotifications] = useState([]);
+  const [notificationMinimized, setNotificationMinimized] = useState(false);
 
   const refreshOutboxCount = useCallback(() => {
     const replyQueue = readJsonStorage(ASYNC_REPLY_QUEUE_KEY, []);
@@ -708,6 +712,27 @@ function App() {
   useEffect(() => {
     refreshSession();
   }, [refreshSession]);
+
+  const refreshPatientNotifications = useCallback(async () => {
+    if (user?.role !== 'patient') {
+      setPatientNotifications([]);
+      return;
+    }
+
+    const res = await apiRequest('/api/patients/notifications');
+    if (res.ok) {
+      setPatientNotifications(Array.isArray(res.data?.notifications) ? res.data.notifications : []);
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
+    refreshPatientNotifications();
+  }, [refreshPatientNotifications]);
+
+  const dismissPatientNotification = useCallback(async (messageId) => {
+    setPatientNotifications((prev) => prev.filter((item) => item.id !== messageId));
+    await apiRequest(`/api/patients/notifications/${messageId}/dismiss`, { method: 'POST' }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -775,6 +800,14 @@ function App() {
   return (
     <SessionContext.Provider value={contextValue}>
       <RuralSupportContext.Provider value={ruralSupportValue}>
+        {user?.role === 'patient' && patientNotifications.length > 0 ? (
+          <PatientNotificationBanner
+            notifications={patientNotifications}
+            minimized={notificationMinimized}
+            onMinimize={() => setNotificationMinimized((prev) => !prev)}
+            onDismiss={dismissPatientNotification}
+          />
+        ) : null}
         <Routes>
           <Route path="/" element={<WelcomePage />} />
           <Route path="/auth/login" element={<LoginPage />} />
@@ -4888,6 +4921,8 @@ function AppointmentDetailPage() {
   const canReview =
     user.role === 'patient' && appointment.status === 'completed' && user.id === appointment.patientId;
   const canMarkNoShow = user.role === 'doctor' || user.role === 'admin';
+  const canManageAgentPlan =
+    user.role === 'admin' || (user.role === 'doctor' && user.id === appointment.doctorId);
   const personName =
     data.history?.currentPatientProfile?.name ||
     (appointment.familyMember ? appointment.familyMember.fullName : appointment.patient.fullName);
@@ -5415,6 +5450,14 @@ function AppointmentDetailPage() {
             </section>
           ) : null}
 
+          {canManageAgentPlan && ['booked', 'no_show'].includes(appointment.status) ? (
+            <AgentPlanPanel appointment={appointment} agentType="no-show" />
+          ) : null}
+
+          {canManageAgentPlan && appointment.status === 'completed' && appointment.prescription ? (
+            <AgentPlanPanel appointment={appointment} agentType="post-visit" />
+          ) : null}
+
           <div className="doctor-appointment-grid">
             <div className="doctor-appointment-left-col">
               <section className="doctor-appointment-participants">
@@ -5807,6 +5850,8 @@ function PrescriptionPage() {
 
   const isDoctorOwner =
     user.role === 'doctor' && data?.appointment && user.id === data.appointment.doctorId;
+  const canManageAgentPlan =
+    user.role === 'admin' || (user.role === 'doctor' && data?.appointment && user.id === data.appointment.doctorId);
 
   const savePrescription = async (event) => {
     event.preventDefault();
@@ -6272,6 +6317,10 @@ function PrescriptionPage() {
             <strong>Instructions:</strong> {prescription.instructions || 'N/A'}
           </p>
         </section>
+      ) : null}
+
+      {canManageAgentPlan && appointment.status === 'completed' && prescription ? (
+        <AgentPlanPanel appointment={appointment} agentType="post-visit" />
       ) : null}
 
       {isDoctorOwner ? (
@@ -8795,4 +8844,3 @@ function DoctorAnalyticsPage() {
 }
 
 export default App;
-

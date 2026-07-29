@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -25,6 +26,38 @@ enum AppointmentStatus {
   completed
   cancelled
   no_show
+}
+
+enum AgentType {
+  no_show_recovery
+  post_visit_follow_up
+}
+
+enum AgentRunStatus {
+  planned
+  awaiting_approval
+  executing
+  completed
+  partially_completed
+  failed
+  cancelled
+}
+
+enum AgentActionStatus {
+  proposed
+  approved
+  rejected
+  executing
+  completed
+  failed
+  skipped
+}
+
+enum AgentRiskLevel {
+  low
+  medium
+  high
+  critical
 }
 
 enum TriageLevel {
@@ -185,6 +218,8 @@ model User {
   communityParticipantsJoined  CommunitySessionParticipant[] @relation("community_participant_joined_by")
   externalConsultThreads       ExternalConsultThread[]       @relation("external_thread_patient")
   externalConsultMessages      ExternalConsultMessage[]      @relation("external_message_actor")
+  agentRunsRequested           AgentRun[]                    @relation("agent_runs_requested_by")
+  agentActionsApproved         AgentAction[]                 @relation("agent_actions_approved_by")
   voiceNotes                   ConsultationVoiceNote[]       @relation("voice_note_author")
   secondOpinionAsPatient       SecondOpinionRequest[]        @relation("second_opinion_patient")
   secondOpinionAsRequester     SecondOpinionRequest[]        @relation("second_opinion_requested_by")
@@ -282,6 +317,7 @@ model Appointment {
   referralsFrom         Referral[]                    @relation("referral_from_appointment")
   referralsTo           Referral[]                    @relation("referral_to_appointment")
   externalThread        ExternalConsultThread?
+  agentRuns             AgentRun[]
   voiceNotes            ConsultationVoiceNote[]
   emergencyEscalations  EmergencyEscalation[]
   carePlanCheckIns      CarePlanCheckIn[]
@@ -834,6 +870,72 @@ model ExternalConsultMessage {
 
   @@index([threadId, createdAt])
   @@index([syncedById])
+}
+
+model AgentRun {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agentType AgentType
+  status    AgentRunStatus @default(planned)
+
+  dedupeKey String @unique
+
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  requestedById String
+  requestedBy   User   @relation("agent_runs_requested_by", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  triggeredBy String
+  input       Json?
+  context     Json?
+  plan        Json?
+  summary     String?
+  error       String?
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  actions AgentAction[]
+
+  @@index([appointmentId, agentType, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([status, createdAt])
+}
+
+model AgentAction {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runId String
+  run   AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  actionKey   String
+  toolName    String
+  title       String
+  description String?
+
+  arguments Json
+  result    Json?
+  error     String?
+
+  riskLevel        AgentRiskLevel    @default(medium)
+  requiresApproval Boolean           @default(true)
+  status           AgentActionStatus @default(proposed)
+
+  idempotencyKey String @unique
+
+  approvedById String?
+  approvedBy   User?   @relation("agent_actions_approved_by", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  approvedAt DateTime?
+  executedAt DateTime?
+
+  @@index([runId, status])
+  @@index([approvedById, approvedAt])
 }
 
 model ConsultationVoiceNote {

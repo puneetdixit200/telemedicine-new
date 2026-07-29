@@ -1,8 +1,12 @@
 // @ts-check
+const fs = require('fs');
 const { defineConfig, devices } = require('@playwright/test');
 
 const port = Number(process.env.PORT || 3000);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${port}`;
+const chromiumExecutablePath =
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
+  (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
 
 module.exports = defineConfig({
   testDir: './e2e',
@@ -32,7 +36,10 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] }
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: chromiumExecutablePath ? { executablePath: chromiumExecutablePath } : undefined
+      }
     }
   ]
 });

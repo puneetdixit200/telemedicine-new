@@ -4,6 +4,10 @@ const {
   familyCreateSchema,
   familyUpdateSchema
 } = require('../models/schemas/patients.schemas');
+const {
+  listPatientNotifications,
+  dismissPatientNotification
+} = require('../services/patient-notifications.service');
 
 async function loadWorkspaceData(userId) {
   const [user, completedAppointments, recentDocuments] = await Promise.all([
@@ -62,6 +66,27 @@ async function loadWorkspaceData(userId) {
 }
 
 const patientsController = {
+  listNotifications: async (req, res, next) => {
+    try {
+      const notifications = await listPatientNotifications(req.user.id);
+      return res.json({ ok: true, notifications });
+    } catch (e) {
+      return next(e);
+    }
+  },
+
+  dismissNotification: async (req, res, next) => {
+    try {
+      await dismissPatientNotification({
+        patientId: req.user.id,
+        messageId: req.params.messageId
+      });
+      return res.json({ ok: true });
+    } catch (e) {
+      return next(e);
+    }
+  },
+
   viewWorkspace: async (req, res, next) => {
     try {
       const { user, completedAppointments, recentDocuments } = await loadWorkspaceData(req.user.id);

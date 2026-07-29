@@ -6301,6 +6301,237 @@ img.sanctuary-home-specialty-icon {
   gap: 0.3rem;
 }
 
+.agent-plan-panel {
+  border: 1px solid #d8e1de;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 14px 24px rgba(25, 28, 29, 0.05);
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.agent-plan-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.agent-plan-kicker {
+  margin: 0 0 0.2rem;
+  color: #00685f;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.agent-plan-panel h2 {
+  margin: 0;
+  color: #17201e;
+  font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;
+  font-size: 1.05rem;
+}
+
+.agent-plan-primary,
+.agent-plan-controls button {
+  min-height: 2.45rem;
+  border-radius: 0.7rem;
+  border: 1px solid #00685f;
+  background: #00796f;
+  color: #ffffff;
+  font-weight: 800;
+  padding: 0.5rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.agent-plan-primary:disabled,
+.agent-plan-controls button:disabled {
+  border-color: #dce3e1;
+  background: #edf1f0;
+  color: #6d7a77;
+}
+
+.agent-plan-body,
+.agent-plan-summary,
+.agent-plan-actions,
+.agent-plan-medicines {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.agent-plan-status {
+  width: fit-content;
+  border-radius: 999px;
+  background: #e8f4f1;
+  color: #00685f;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.agent-plan-summary blockquote {
+  margin: 0;
+  border-left: 3px solid #00796f;
+  background: #f5f8f7;
+  color: #26312f;
+  padding: 0.7rem;
+  border-radius: 0.55rem;
+  overflow-wrap: anywhere;
+}
+
+.agent-plan-medicines article,
+.agent-plan-action {
+  border: 1px solid #e2e8e6;
+  border-radius: 0.65rem;
+  background: #fbfcfc;
+  padding: 0.65rem;
+}
+
+.agent-plan-medicines article p,
+.agent-plan-action small {
+  margin: 0.15rem 0 0;
+  color: #5e6b68;
+}
+
+.agent-plan-action {
+  display: grid;
+  grid-template-columns: 1.2rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+}
+
+.agent-plan-action.completed {
+  border-color: #b7dfcb;
+  background: #f0fbf5;
+}
+
+.agent-plan-action.failed {
+  border-color: #f2c7c1;
+  background: #fff6f5;
+}
+
+.agent-plan-action span {
+  min-width: 0;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.agent-plan-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.agent-plan-controls button.ghost {
+  border-color: #d6dddb;
+  background: #f5f6f6;
+  color: #303b39;
+}
+
+.patient-notification-banner {
+  position: fixed;
+  top: 0.8rem;
+  left: 50%;
+  z-index: 220;
+  width: min(720px, calc(100vw - 2rem));
+  transform: translateX(-50%);
+  border: 1px solid rgba(0, 104, 95, 0.22);
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  padding: 0.55rem;
+}
+
+.patient-notification-banner.minimized {
+  width: auto;
+  min-width: 12rem;
+  padding: 0;
+  overflow: hidden;
+}
+
+.patient-notification-toggle {
+  border: 0;
+  background: transparent;
+  color: #00685f;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.25rem 0.35rem;
+}
+
+.patient-notification-banner.minimized .patient-notification-toggle {
+  width: 100%;
+  min-height: 2.5rem;
+  justify-content: center;
+  padding: 0.45rem 0.75rem;
+}
+
+.patient-notification-content {
+  display: grid;
+  grid-template-columns: 2.3rem minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.patient-notification-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  background: #e8f4f1;
+  color: #00685f;
+  display: grid;
+  place-items: center;
+}
+
+.patient-notification-content strong {
+  display: block;
+  color: #123f3a;
+}
+
+.patient-notification-content p {
+  margin: 0.25rem 0 0;
+  color: #334155;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.patient-notification-content small {
+  display: block;
+  margin-top: 0.35rem;
+  color: #64748b;
+}
+
+.patient-notification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.patient-notification-actions a,
+.patient-notification-actions button {
+  min-height: 2.15rem;
+  border-radius: 0.55rem;
+  border: 1px solid #00685f;
+  background: #00796f;
+  color: #ffffff;
+  font-weight: 800;
+  text-decoration: none;
+  padding: 0.45rem 0.65rem;
+}
+
+.patient-notification-actions button {
+  border-color: #d6dddb;
+  background: #f5f6f6;
+  color: #303b39;
+}
+
 .doctor-appointment-grid {
   display: grid;
   grid-template-columns: 370px minmax(0, 1fr);
@@ -7207,6 +7438,29 @@ img.sanctuary-home-specialty-icon {
 }
 
 @media (max-width: 980px) {
+  .mobile-bottom-nav,
+  .patient-appointment-mobile-nav,
+  .patient-prescription-bottom-nav {
+    display: none !important;
+  }
+
+  .page-wrap {
+    padding-bottom: calc(6.8rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  .call-route-wrap {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  .call-route-shell .call-sanctuary-shell {
+    padding-bottom: calc(13.5rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  .call-route-shell .call-controls {
+    bottom: calc(66px + env(safe-area-inset-bottom)) !important;
+    z-index: 120 !important;
+  }
+
   /* ═══════════════════════════════════════════
      MOBILE REDESIGN — Premium Health App UX
      ═══════════════════════════════════════════ */
@@ -7324,9 +7578,17 @@ img.sanctuary-home-specialty-icon {
   .patient-appointment-text-btn,
   .doctor-appointment-action-main,
   .doctor-appointment-sub-btn,
+  .agent-plan-primary,
+  .agent-plan-controls button,
   .booking-slot-chip,
   .booking-date-chip {
     width: 100%;
+  }
+
+  .agent-plan-panel-head,
+  .agent-plan-controls {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .call-sanctuary-shell {
@@ -8050,6 +8312,14 @@ img.sanctuary-home-specialty-icon {
 }
 
 @media (max-width: 520px) {
+  .call-route-shell .call-sanctuary-shell {
+    padding-bottom: calc(17rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  .call-route-shell .call-sidebar {
+    padding-bottom: calc(17.5rem + env(safe-area-inset-bottom)) !important;
+  }
+
   .page-wrap,
   .compass-shell,
   .patient-appointment-shell,
@@ -8152,4 +8422,3 @@ img.sanctuary-home-specialty-icon {
     border-radius: 0.55rem;
   }
 }
-
