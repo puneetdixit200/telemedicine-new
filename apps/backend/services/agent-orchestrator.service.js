@@ -55,7 +55,7 @@ async function createRunWithActions({ agentType, appointmentId, actor, input, co
     return existing;
   }
 
-  return prisma.$transaction(async (tx) => {
+  const run = await prisma.$transaction(async (tx) => {
     const race = await tx.agentRun.findUnique({ where: { dedupeKey }, include: RUN_INCLUDE });
     if (race) return race;
 
@@ -90,14 +90,15 @@ async function createRunWithActions({ agentType, appointmentId, actor, input, co
       },
       include: RUN_INCLUDE
     });
-    await linkTraceToRun(traceContext?.traceId, run.id).catch(() => {});
-    await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: run.id, phase: 'persistence', eventType: 'agent_run_created', status: 'completed', title: 'Agent run persisted' });
-    await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: run.id, phase: 'persistence', eventType: 'agent_plan_saved', status: 'completed', title: 'Agent plan saved', metadata: { provider: plannerResult.plan?.provider, model: plannerResult.plan?.model, status: plannerResult.plan?.fallbackUsed ? 'fallback' : 'real_ai' } });
-    await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: run.id, phase: 'persistence', eventType: 'agent_actions_created', status: 'completed', title: 'Proposed actions created', metadata: { status: String(run.actions.length) } });
-    await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: run.id, phase: 'approval', eventType: 'awaiting_approval', status: 'info', title: 'Waiting for human approval' });
-    await updateTrace(traceContext?.traceId, { status: 'awaiting_approval' }).catch(() => {});
     return run;
   });
+  await linkTraceToRun(traceContext?.traceId, run.id).catch(() => {});
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: run.id, phase: 'persistence', eventType: 'agent_run_created', status: 'completed', title: 'Agent run persisted' });
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: run.id, phase: 'persistence', eventType: 'agent_plan_saved', status: 'completed', title: 'Agent plan saved', metadata: { provider: plannerResult.plan?.provider, model: plannerResult.plan?.model, status: plannerResult.plan?.fallbackUsed ? 'fallback' : 'real_ai' } });
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: run.id, phase: 'persistence', eventType: 'agent_actions_created', status: 'completed', title: 'Proposed actions created', metadata: { status: String(run.actions.length) } });
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: run.id, phase: 'approval', eventType: 'awaiting_approval', status: 'info', title: 'Waiting for human approval' });
+  await updateTrace(traceContext?.traceId, { status: 'awaiting_approval' }).catch(() => {});
+  return run;
 }
 
 async function createNoShowRecoveryPlan({ appointmentId, actor, input = {}, traceContext }) {
