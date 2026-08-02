@@ -43,6 +43,7 @@ function createApp() {
   const app = express();
   const backendRoot = path.join(__dirname, '..');
   const repoRoot = path.join(__dirname, '..', '..', '..');
+  const isProd = process.env.NODE_ENV === 'production';
   const apiOnly = process.env.NEXT_COMPAT_API_ONLY === 'true';
   const skipTrustProxy = process.env.NEXT_COMPAT_SKIP_TRUST_PROXY === 'true';
 
