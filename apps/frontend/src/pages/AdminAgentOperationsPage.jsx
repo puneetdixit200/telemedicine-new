@@ -138,6 +138,15 @@ export default function AdminAgentOperationsPage({ user }) {
           const id = payload.new?.id;
           if (id && eventIds.current.has(id)) return;
           if (id) eventIds.current.add(id);
+          const eventCreatedAt = payload.new?.createdAt ? new Date(payload.new.createdAt).getTime() : null;
+          const receivedAt = Date.now();
+          logRealtime('event received', {
+            eventId: id || null,
+            eventType: payload.new?.eventType || null,
+            eventCreatedAt: payload.new?.createdAt || null,
+            receivedAt: new Date(receivedAt).toISOString(),
+            transportLatencyMs: eventCreatedAt ? Math.max(0, receivedAt - eventCreatedAt) : null
+          });
           sync({ incremental: true });
         })
         .subscribe((status, error) => {
