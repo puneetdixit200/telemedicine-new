@@ -9,6 +9,12 @@ function clean(value, fallback = '') {
   return text || fallback;
 }
 
+function ensureSentence(value) {
+  const text = clean(value);
+  if (!text) return '';
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 function formatIstDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Unknown time';
@@ -65,9 +71,9 @@ function buildPostVisitFallback(context) {
   return {
     summary: 'Post-consultation follow-up plan prepared from the doctor-authored prescription.',
     patientFriendlySummary: [
-      prescription.diagnosis ? `Diagnosis noted by the doctor: ${prescription.diagnosis}.` : '',
-      prescription.instructions ? `Doctor instructions: ${prescription.instructions}.` : '',
-      `Follow-up: ${followUpLabel}.`
+      prescription.diagnosis ? ensureSentence(`Diagnosis noted by the doctor: ${prescription.diagnosis}`) : '',
+      prescription.instructions ? ensureSentence(`Doctor instructions: ${prescription.instructions}`) : '',
+      prescription.followUpAt ? `Follow-up: ${followUpLabel}.` : 'Follow-up: No follow-up date was recorded.'
     ]
       .filter(Boolean)
       .join(' '),
@@ -238,6 +244,7 @@ async function planPostVisitFollowUp(context, input = {}) {
 
 module.exports = {
   GENERIC_WARNING,
+  ensureSentence,
   formatIstDateTime,
   buildNoShowFallback,
   buildPostVisitFallback,

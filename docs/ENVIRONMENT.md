@@ -58,5 +58,5 @@ Set these for Production and Preview in the Vercel project:
 
 - User-facing dates and times are formatted in Indian Standard Time (`Asia/Kolkata`).
 - Azure-only document uploads require valid Azure credentials. For local testing without Azure, set `AZURE_UPLOADS_MODE=local-only`.
-- OpenRouter is used before Ollama when `OPENROUTER_API_KEY` is set. The default free model is `openai/gpt-oss-120b:free`.
+- OpenRouter is used before Ollama when `OPENROUTER_API_KEY` is set. The default model is `openai/gpt-oss-120b`; legacy `openai/gpt-oss-120b:free` configuration is normalized to that model.
 - `vercel.json` pins serverless API execution to Singapore (`sin1`) so Vercel functions run closer to the Supabase `ap-southeast-1` database.

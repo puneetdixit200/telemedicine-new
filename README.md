@@ -117,7 +117,7 @@ Reference file: `.env.example`
 - `OLLAMA_MODEL` (default `llama3.1:8b`)
 - `OLLAMA_TIMEOUT_MS` (default `45000`)
 - `OPENROUTER_API_KEY`
-- `OPENROUTER_MODEL` (default `openai/gpt-oss-120b:free`)
+- `OPENROUTER_MODEL` (default `openai/gpt-oss-120b`; legacy `openai/gpt-oss-120b:free` is normalized)
 - `OPENROUTER_TIMEOUT_MS` (default `45000`)
 - `AI_RATE_LIMIT_PER_MINUTE` (default `40`)
 

@@ -1,7 +1,10 @@
 const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS || 45000);
 const OPENROUTER_TIMEOUT_MS = Number(process.env.OPENROUTER_TIMEOUT_MS || process.env.OLLAMA_TIMEOUT_MS || 45000);
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
-const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-oss-120b:free';
+// OpenRouter removed the free variant for this model. Normalize that legacy
+// setting so an old deployment environment cannot silently force fallback.
+const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-oss-120b';
+const LEGACY_OPENROUTER_MODEL = 'openai/gpt-oss-120b:free';
 const isProd = process.env.NODE_ENV === 'production';
 
 function getOllamaBaseUrl() {
@@ -22,7 +25,8 @@ function getOpenRouterApiKey() {
 }
 
 function getOpenRouterModel() {
-  return String(process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL).trim();
+  const configuredModel = String(process.env.OPENROUTER_MODEL || '').trim();
+  return configuredModel && configuredModel !== LEGACY_OPENROUTER_MODEL ? configuredModel : DEFAULT_OPENROUTER_MODEL;
 }
 
 function isOpenRouterConfigured() {

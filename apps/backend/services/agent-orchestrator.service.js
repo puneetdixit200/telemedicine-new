@@ -178,9 +178,34 @@ async function updateRunStatus(runId) {
 async function executeApprovedActions({ runId, actor }) {
   const run = await findRunById(runId);
   assertCanApproveAgentRun(actor, run);
-  await prisma.agentRun.update({ where: { id: runId }, data: { status: 'executing' } });
+
+  if (run.status === 'executing' || run.actions.some((action) => action.status === 'executing')) {
+    const error = new Error('Agent execution is already in progress.');
+    error.status = 202;
+    error.code = 'AGENT_EXECUTION_IN_PROGRESS';
+    error.run = publicRun(run);
+    throw error;
+  }
 
   const approved = run.actions.filter((action) => action.status === 'approved');
+  if (!approved.length) return publicRun(run);
+
+  const runClaim = await prisma.agentRun.updateMany({
+    where: { id: runId, status: { not: 'executing' } },
+    data: { status: 'executing' }
+  });
+  if (runClaim.count !== 1) {
+    const latest = await findRunById(runId);
+    if (latest?.status === 'executing' || latest?.actions.some((action) => action.status === 'executing')) {
+      const error = new Error('Agent execution is already in progress.');
+      error.status = 202;
+      error.code = 'AGENT_EXECUTION_IN_PROGRESS';
+      error.run = publicRun(latest);
+      throw error;
+    }
+    return publicRun(latest);
+  }
+
   for (const action of approved) {
     const claim = await prisma.agentAction.updateMany({
       where: { id: action.id, runId, status: 'approved' },
