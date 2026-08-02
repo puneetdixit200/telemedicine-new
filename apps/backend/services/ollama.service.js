@@ -147,8 +147,6 @@ async function openRouterGenerate({ systemPrompt, userPrompt, temperature = 0.2,
           { role: 'user', content: String(userPrompt || '') }
         ],
         temperature,
-        reasoning_effort: 'low',
-        response_format: { type: 'json_object' },
         max_tokens: maxTokens
       }),
       signal: controller.signal

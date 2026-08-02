@@ -51,7 +51,7 @@ function createApp() {
   const frontendSourceIndexPath = path.join(repoRoot, 'apps', 'frontend', 'index.html');
 
   // Trust Azure App Service / Load Balancer proxy headers
-  if (!skipTrustProxy) {
+  if (isProd || process.env.VERCEL || !skipTrustProxy) {
     const { configureTrustProxy } = require('./trust-proxy');
     configureTrustProxy(app);
   }

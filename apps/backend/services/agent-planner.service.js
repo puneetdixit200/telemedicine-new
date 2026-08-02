@@ -168,7 +168,7 @@ async function planNoShowRecovery(context, input = {}) {
     };
     const text = await aiGenerate({
       systemPrompt:
-        'You are a care-coordination drafting assistant inside a telemedicine workflow. Return JSON only. Do not diagnose or provide treatment. Draft a concise, respectful recovery message for a missed appointment. Use only supplied names, appointment context and available time labels. Do not claim a slot is booked. Ask the patient to confirm or use the provided rebooking path.',
+        'You are a care-coordination drafting assistant inside a telemedicine workflow. Return one valid JSON object with exactly these keys: summary (string), patientMessage (string), rationale (array of strings), safetyNotes (array of strings). Do not diagnose or provide treatment. Draft a concise, respectful recovery message for a missed appointment. Use only supplied names, appointment context and available time labels. Do not claim a slot is booked. Ask the patient to confirm or use the provided rebooking path.',
       userPrompt: JSON.stringify(promptContext),
       temperature: 0.2,
       maxTokens: 700
@@ -198,7 +198,7 @@ async function planPostVisitFollowUp(context, input = {}) {
     const prescriptionItems = Array.isArray(context.prescription?.items) ? context.prescription.items : [];
     const text = await aiGenerate({
       systemPrompt:
-        'You are a clinical communication drafting assistant. Return JSON only. You may simplify information already written by the doctor, but must not add, remove or change medicines, dosage, frequency, duration, diagnosis or follow-up timing. Do not diagnose. Do not recommend new treatment. All output is a draft requiring clinician approval.',
+        'You are a clinical communication drafting assistant. Return one valid JSON object with exactly these keys: patientFriendlySummary (string), medicationExplanation (array of objects with plainInstruction strings), nextSteps (array of strings), warningSigns (array of strings). You may simplify information already written by the doctor, but must not add, remove or change medicines, dosage, frequency, duration, diagnosis or follow-up timing. Do not diagnose. Do not recommend new treatment. All output is a draft requiring clinician approval.',
       userPrompt: JSON.stringify({
         language: input.preferredLanguage || context.patient?.language || 'English',
         diagnosis: context.prescription?.diagnosis || '',
