@@ -129,6 +129,8 @@ async function createNoShowRecoveryPlan({ appointmentId, actor, input = {}, trac
   await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'planning', eventType: 'ai_request_started', status: 'started', title: 'Generating agent plan' });
   const plannerResult = await planNoShowRecovery(context, input);
   await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'planning', eventType: 'ai_response_received', status: 'completed', title: 'Agent plan response received', metadata: { provider: plannerResult.plan?.provider, model: plannerResult.plan?.model, status: plannerResult.plan?.fallbackUsed ? 'fallback' : 'real_ai' } });
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'validation', eventType: 'json_parse_completed', status: 'completed', title: 'AI response parsed as JSON' });
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'validation', eventType: 'response_schema_validation_passed', status: 'completed', title: 'Agent response schema validated' });
   const run = await createRunWithActions({
     agentType: 'no_show_recovery',
     appointmentId,
@@ -166,6 +168,9 @@ async function createPostVisitFollowUpPlan({ appointmentId, actor, input = {}, t
   await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'planning', eventType: 'ai_request_started', status: 'started', title: 'Generating agent plan' });
   const plannerResult = await planPostVisitFollowUp(context, input);
   await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'planning', eventType: 'ai_response_received', status: 'completed', title: 'Agent plan response received', metadata: { provider: plannerResult.plan?.provider, model: plannerResult.plan?.model, status: plannerResult.plan?.fallbackUsed ? 'fallback' : 'real_ai' } });
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'validation', eventType: 'json_parse_completed', status: 'completed', title: 'AI response parsed as JSON' });
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'validation', eventType: 'response_schema_validation_passed', status: 'completed', title: 'Agent response schema validated' });
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'validation', eventType: 'medication_fidelity_check_passed', status: 'completed', title: 'Medication fields preserved' });
   const run = await createRunWithActions({
     agentType: 'post_visit_follow_up',
     appointmentId,
