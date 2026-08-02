@@ -6,6 +6,7 @@ const {
   rejectAgentActions,
   executeApprovedActions
 } = require('../services/agent-orchestrator.service');
+const { createAgentTrace, safeRecordAgentEvent, failAgentTrace } = require('../services/agent-observability.service');
 const {
   createPlanSchema,
   approveActionsSchema,
@@ -33,31 +34,55 @@ function parseOrThrow(schema, body) {
   return parsed.data;
 }
 
+async function beginTrace(req, agentType) {
+  try {
+    const trace = await createAgentTrace({
+      agentType,
+      appointmentId: req.params.appointmentId,
+      requestedById: req.user.id,
+      requestId: req.requestId
+    });
+    await safeRecordAgentEvent({ traceId: trace.traceId, phase: 'trigger', eventType: 'request_received', status: 'info', title: 'Agent request received', metadata: { agentType, status: 'accepted' } });
+    await safeRecordAgentEvent({ traceId: trace.traceId, phase: 'trigger', eventType: 'actor_identified', status: 'completed', title: 'Authorized actor identified', metadata: { status: req.user.role } });
+    await safeRecordAgentEvent({ traceId: trace.traceId, phase: 'trigger', eventType: 'agent_type_selected', status: 'completed', title: 'Agent type selected', metadata: { status: agentType } });
+    return trace;
+  } catch (error) {
+    console.warn('[agent-observability] trace creation failed', { error: String(error?.message || error).slice(0, 200) });
+    return null;
+  }
+}
+
 const agentsController = {
   createNoShowPlan: async (req, res) => {
+    const trace = await beginTrace(req, 'no_show_recovery');
     try {
       const input = parseOrThrow(createPlanSchema, req.body);
       const run = await createNoShowRecoveryPlan({
         appointmentId: req.params.appointmentId,
         actor: req.user,
-        input
+        input,
+        traceContext: trace
       });
       return res.json({ ok: true, run });
     } catch (error) {
+      await failAgentTrace(trace?.traceId, error).catch(() => {});
       return sendError(res, error);
     }
   },
 
   createPostVisitPlan: async (req, res) => {
+    const trace = await beginTrace(req, 'post_visit_follow_up');
     try {
       const input = parseOrThrow(createPlanSchema, req.body);
       const run = await createPostVisitFollowUpPlan({
         appointmentId: req.params.appointmentId,
         actor: req.user,
-        input
+        input,
+        traceContext: trace
       });
       return res.json({ ok: true, run });
     } catch (error) {
+      await failAgentTrace(trace?.traceId, error).catch(() => {});
       return sendError(res, error);
     }
   },

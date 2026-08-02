@@ -16,6 +16,7 @@ import InnovationHubPage from './pages/InnovationHubPage';
 import DoctorPatientAccessPage from './pages/DoctorPatientAccessPage';
 import AgentPlanPanel from './components/AgentPlanPanel';
 import PatientNotificationBanner from './components/PatientNotificationBanner';
+import AdminAgentOperationsPage from './pages/AdminAgentOperationsPage';
 
 const SessionContext = createContext(null);
 const RuralSupportContext = createContext(null);
@@ -818,6 +819,7 @@ function App() {
 
           <Route element={<ProtectedLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/admin/ai-agents" element={user?.role === 'admin' ? <AdminAgentOperationsPage user={user} /> : <Navigate to="/dashboard" replace />} />
             <Route path="/book" element={user?.role === 'patient' ? <BookingWizardPage /> : <Navigate to="/dashboard" replace />} />
             <Route path="/medicines" element={user?.role === 'patient' ? <MedicineCabinetPage /> : <Navigate to="/dashboard" replace />} />
             <Route path="/profile" element={<ProfilePage />} />
