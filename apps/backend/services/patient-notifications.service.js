@@ -1,4 +1,5 @@
 const { prisma } = require('../models/db');
+const { safeRecordAgentEvent } = require('./agent-observability.service');
 
 function metadataObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -41,12 +42,28 @@ async function listPatientNotifications(patientId) {
     take: 10
   });
 
-  return filterVisiblePatientNotifications(messages).map((message) => ({
-    id: message.id,
-    appointmentId: message.thread?.appointmentId || null,
-    body: message.body,
-    createdAt: message.createdAt,
-    metadata: metadataObject(message.metadata)
+  const visible = filterVisiblePatientNotifications(messages);
+  return Promise.all(visible.map(async (message) => {
+    const metadata = metadataObject(message.metadata);
+    const trace = metadata.agentRunId
+      ? await prisma.agentExecutionTrace.findUnique({ where: { runId: metadata.agentRunId }, select: { id: true, runId: true } })
+      : null;
+    if (trace) {
+      const existing = await prisma.agentExecutionEvent.findFirst({
+        where: { traceId: trace.id, eventType: 'notification_visible_to_patient', metadata: { path: ['messageId'], equals: message.id } },
+        select: { id: true }
+      });
+      if (!existing) {
+        await safeRecordAgentEvent({ traceId: trace.id, runId: trace.runId, phase: 'notification', eventType: 'notification_visible_to_patient', status: 'completed', title: 'Notification visible to patient', metadata: { messageId: message.id } });
+      }
+    }
+    return {
+      id: message.id,
+      appointmentId: message.thread?.appointmentId || null,
+      body: message.body,
+      createdAt: message.createdAt,
+      metadata
+    };
   }));
 }
 
@@ -77,6 +94,14 @@ async function dismissPatientNotification({ patientId, messageId }) {
       metadata: markNotificationDismissed(message.metadata)
     }
   });
+
+  const metadata = metadataObject(message.metadata);
+  if (metadata.agentRunId) {
+    const trace = await prisma.agentExecutionTrace.findUnique({ where: { runId: metadata.agentRunId }, select: { id: true, runId: true } });
+    if (trace) {
+      await safeRecordAgentEvent({ traceId: trace.id, runId: trace.runId, phase: 'notification', eventType: 'notification_dismissed', status: 'completed', title: 'Notification dismissed by patient', metadata: { messageId: message.id } });
+    }
+  }
 
   return { ok: true };
 }
