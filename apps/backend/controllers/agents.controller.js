@@ -15,9 +15,10 @@ const {
 function sendError(res, error) {
   const status = Number(error.status || 500);
   return res.status(status).json({
-    ok: false,
+    ok: status >= 200 && status < 300,
     error: error.message || 'Agent workflow failed.',
-    code: error.code || 'AGENT_WORKFLOW_FAILED'
+    code: error.code || 'AGENT_WORKFLOW_FAILED',
+    ...(error.run ? { run: error.run } : {})
   });
 }
 

@@ -5,7 +5,7 @@ This guide documents a production-grade deployment of Telemedicine Rural App on 
 ## 1. Target Architecture
 
 Recommended baseline:
-- Azure App Service (Linux, Node 20+)
+- Azure App Service (Linux, Node 24)
 - Azure Database for PostgreSQL Flexible Server
 - Azure Storage Account (Blob)
 - Optional: Application Insights
@@ -27,7 +27,7 @@ Runtime flow:
 ## 3.1 App Service Plan and Web App
 
 - Runtime: Linux
-- Node: 20+
+- Node: 24
 - WebSockets: enabled
 - HTTPS Only: enabled
 - Startup Command: `bash startup.sh`
