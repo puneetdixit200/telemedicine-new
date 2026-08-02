@@ -14,6 +14,7 @@ export default function AgentPlanPanel({ appointment, agentType = 'no-show' }) {
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
+  const [messageTone, setMessageTone] = useState('error');
 
   const config = useMemo(() => {
     if (agentType === 'post-visit') {
@@ -42,11 +43,16 @@ export default function AgentPlanPanel({ appointment, agentType = 'no-show' }) {
   const postRunAction = async (path, body, busyLabel) => {
     setBusy(busyLabel);
     setMessage('');
+    setMessageTone('error');
     const res = await apiRequest(path, { method: 'POST', body });
     setBusy('');
     if (!res.ok) {
       setMessage(res.data?.error || 'Agent request failed.');
       return;
+    }
+    if (res.status === 202 && res.data?.code === 'AGENT_EXECUTION_IN_PROGRESS') {
+      setMessage('Execution is already in progress. The latest status is shown below.');
+      setMessageTone('muted');
     }
     setRunAndSelection(res.data.run);
   };
@@ -87,7 +93,7 @@ export default function AgentPlanPanel({ appointment, agentType = 'no-show' }) {
         </button>
       </div>
 
-      {message ? <p className="error">{message}</p> : null}
+      {message ? <p className={messageTone}>{message}</p> : null}
 
       {run ? (
         <div className="agent-plan-body">

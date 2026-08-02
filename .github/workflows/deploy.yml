@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20.x'
+  NODE_VERSION: '24.x'
   AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
   AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
 
