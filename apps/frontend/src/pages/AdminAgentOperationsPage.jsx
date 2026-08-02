@@ -51,6 +51,10 @@ export default function AdminAgentOperationsPage({ user }) {
   const [replayIndex, setReplayIndex] = useState(null);
   const eventIds = useRef(new Set());
   const lastCursor = useRef(null);
+  const selectedIdRef = useRef(selectedId);
+  const activeRunsRef = useRef(0);
+  selectedIdRef.current = selectedId;
+  activeRunsRef.current = overview.activeRuns || 0;
 
   const sync = useCallback(async ({ incremental = false } = {}) => {
     const [summaryResponse, tracesResponse] = await Promise.all([
@@ -61,21 +65,21 @@ export default function AdminAgentOperationsPage({ user }) {
     if (tracesResponse.ok) {
       const rows = tracesResponse.data.rows || [];
       setTraces(rows);
-      if (!selectedId && rows[0]) setSelectedId(rows[0].id);
+      if (!selectedIdRef.current && rows[0]) setSelectedId(rows[0].id);
     }
     if (incremental && lastCursor.current) {
       const eventsResponse = await apiRequest(`/api/admin/agents/events?after=${encodeURIComponent(lastCursor.current)}`);
       if (eventsResponse.ok && eventsResponse.data.events?.length) {
         const latest = eventsResponse.data.events.at(-1);
         lastCursor.current = latest.createdAt;
-        if (selectedId) {
-          const current = await apiRequest(`/api/admin/agents/traces/${selectedId}`);
+        if (selectedIdRef.current) {
+          const current = await apiRequest(`/api/admin/agents/traces/${selectedIdRef.current}`);
           if (current.ok) setDetail(current.data.trace);
         }
       }
     }
     setLastSync(new Date().toISOString());
-  }, [selectedId]);
+  }, []);
 
   useEffect(() => { sync(); }, [sync]);
 
@@ -96,17 +100,35 @@ export default function AdminAgentOperationsPage({ user }) {
     let channel;
     let disposed = false;
     let timer;
+    const logRealtime = (message, details = {}) => {
+      console.info(`[agent-realtime] ${message}`, details);
+    };
     const beginPolling = () => {
+      logRealtime('polling fallback started');
       setConnection('Polling fallback');
       clearInterval(timer);
-      timer = setInterval(() => sync({ incremental: true }), overview.activeRuns ? 2000 : 10000);
+      timer = setInterval(() => sync({ incremental: true }), activeRunsRef.current ? 2000 : 10000);
     };
     const connect = async () => {
       try {
+      logRealtime('setup', {
+        hasClient: true,
+        userId: user?.id || null,
+        role: user?.role || null,
+        eventTable: 'AgentExecutionEvent',
+        traceTable: 'AgentExecutionTrace'
+      });
       const supabase = createSupabaseBrowserClient();
       const tokenResponse = await apiRequest('/api/admin/agents/realtime-token');
-      if (tokenResponse.ok && tokenResponse.data?.accessToken) supabase.realtime.setAuth(tokenResponse.data.accessToken);
-      if (disposed) return;
+      logRealtime('token response', { ok: tokenResponse.ok, hasAccessToken: Boolean(tokenResponse.data?.accessToken) });
+      if (tokenResponse.ok && tokenResponse.data?.accessToken) {
+        await supabase.realtime.setAuth(tokenResponse.data.accessToken);
+      }
+      if (disposed) {
+        logRealtime('connection cancelled before channel creation');
+        return;
+      }
+      logRealtime('channel creation', { topic: 'admin-agent-operations' });
       channel = supabase.channel('admin-agent-operations')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'AgentExecutionTrace' }, () => { sync(); })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'AgentExecutionEvent' }, (payload) => {
@@ -115,19 +137,34 @@ export default function AdminAgentOperationsPage({ user }) {
           if (id) eventIds.current.add(id);
           sync({ incremental: true });
         })
-        .subscribe((status) => {
+        .subscribe((status, error) => {
+          logRealtime('channel status', {
+            status,
+            errorName: error?.name || null,
+            errorMessage: error?.message || null
+          });
           if (status === 'SUBSCRIBED') { setConnection('Live'); sync(); clearInterval(timer); }
           else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') beginPolling();
           else if (status === 'RECONNECTING') setConnection('Reconnecting');
         });
-      } catch (_error) { beginPolling(); }
+      } catch (error) {
+        logRealtime('setup failed', { errorName: error?.name || null, errorMessage: error?.message || null });
+        beginPolling();
+      }
     };
     connect();
     const onFocus = () => sync({ incremental: true });
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
-    return () => { disposed = true; clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); if (channel) channel.unsubscribe(); };
-  }, [overview.activeRuns, sync]);
+    return () => {
+      disposed = true;
+      logRealtime('cleanup', { hasChannel: Boolean(channel) });
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+      if (channel) channel.unsubscribe();
+    };
+  }, [sync, user?.id, user?.role]);
 
   const selected = detail || traces.find((trace) => trace.id === selectedId);
   const filteredTraces = useMemo(() => traces.filter((trace) => filter === 'all' || trace.status === filter || (filter === 'real-ai' && trace.run?.plan?.fallbackUsed === false) || (filter === 'fallback' && trace.run?.plan?.fallbackUsed === true)), [filter, traces]);
