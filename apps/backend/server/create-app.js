@@ -45,13 +45,14 @@ function createApp() {
   const repoRoot = path.join(__dirname, '..', '..', '..');
   const isProd = process.env.NODE_ENV === 'production';
   const apiOnly = process.env.NEXT_COMPAT_API_ONLY === 'true';
+  const isVercel = Boolean(process.env.VERCEL);
   const skipTrustProxy = process.env.NEXT_COMPAT_SKIP_TRUST_PROXY === 'true';
 
   const frontendDistPath = path.join(repoRoot, 'apps', 'frontend', 'dist');
   const frontendSourceIndexPath = path.join(repoRoot, 'apps', 'frontend', 'index.html');
 
   // Trust Azure App Service / Load Balancer proxy headers
-  if (isProd || process.env.VERCEL || !skipTrustProxy) {
+  if ((isProd || apiOnly || isVercel) && !skipTrustProxy) {
     const { configureTrustProxy } = require('./trust-proxy');
     configureTrustProxy(app);
   }
