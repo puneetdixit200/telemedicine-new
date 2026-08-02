@@ -94,14 +94,19 @@ export default function AdminAgentOperationsPage({ user }) {
 
   useEffect(() => {
     let channel;
+    let disposed = false;
     let timer;
     const beginPolling = () => {
       setConnection('Polling fallback');
       clearInterval(timer);
       timer = setInterval(() => sync({ incremental: true }), overview.activeRuns ? 2000 : 10000);
     };
-    try {
+    const connect = async () => {
+      try {
       const supabase = createSupabaseBrowserClient();
+      const tokenResponse = await apiRequest('/api/admin/agents/realtime-token');
+      if (tokenResponse.ok && tokenResponse.data?.accessToken) supabase.realtime.setAuth(tokenResponse.data.accessToken);
+      if (disposed) return;
       channel = supabase.channel('admin-agent-operations')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'AgentExecutionTrace' }, () => { sync(); })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'AgentExecutionEvent' }, (payload) => {
@@ -115,11 +120,13 @@ export default function AdminAgentOperationsPage({ user }) {
           else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') beginPolling();
           else if (status === 'RECONNECTING') setConnection('Reconnecting');
         });
-    } catch (_error) { beginPolling(); }
+      } catch (_error) { beginPolling(); }
+    };
+    connect();
     const onFocus = () => sync({ incremental: true });
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
-    return () => { clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); if (channel) channel.unsubscribe(); };
+    return () => { disposed = true; clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); if (channel) channel.unsubscribe(); };
   }, [overview.activeRuns, sync]);
 
   const selected = detail || traces.find((trace) => trace.id === selectedId);

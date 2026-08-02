@@ -4,6 +4,7 @@ const { adminAgentsController } = require('../controllers/admin-agents.controlle
 
 const router = express.Router();
 router.use(authRequired, roleRequired('admin'));
+router.get('/realtime-token', adminAgentsController.realtimeToken);
 router.get('/overview', adminAgentsController.overview);
 router.get('/traces', adminAgentsController.traces);
 router.get('/traces/:traceId', adminAgentsController.trace);

@@ -1,4 +1,5 @@
 const { prisma } = require('../models/db');
+const { createSupabaseExpressClient, getSupabaseAnonKey, getSupabaseUrl } = require('../services/supabase-auth.service');
 
 const TRACE_INCLUDE = {
   appointment: { select: { id: true, status: true, doctorId: true, patientId: true, startAt: true } },
@@ -108,6 +109,14 @@ async function overview() {
 }
 
 const adminAgentsController = {
+  realtimeToken: async (req, res) => {
+    const supabase = createSupabaseExpressClient(req, res);
+    const sessionResponse = await supabase.auth.getSession();
+    if (sessionResponse.error || !sessionResponse.data?.session?.access_token) {
+      return res.status(401).json({ ok: false, code: 'REALTIME_SESSION_UNAVAILABLE', error: 'Realtime session unavailable.' });
+    }
+    return res.json({ ok: true, url: getSupabaseUrl(), anonKey: getSupabaseAnonKey(), accessToken: sessionResponse.data.session.access_token });
+  },
   overview: async (_req, res) => res.json({ ok: true, overview: await overview() }),
   traces: async (req, res) => res.json({ ok: true, ...(await listTraces(req)) }),
   trace: async (req, res) => {
