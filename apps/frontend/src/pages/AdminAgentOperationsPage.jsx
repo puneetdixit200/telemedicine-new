@@ -96,17 +96,33 @@ export default function AdminAgentOperationsPage({ user }) {
     let channel;
     let disposed = false;
     let timer;
+    const logRealtime = (message, details = {}) => {
+      console.info(`[agent-realtime] ${message}`, details);
+    };
     const beginPolling = () => {
+      logRealtime('polling fallback started');
       setConnection('Polling fallback');
       clearInterval(timer);
       timer = setInterval(() => sync({ incremental: true }), overview.activeRuns ? 2000 : 10000);
     };
     const connect = async () => {
       try {
+      logRealtime('setup', {
+        hasClient: true,
+        userId: user?.id || null,
+        role: user?.role || null,
+        eventTable: 'AgentExecutionEvent',
+        traceTable: 'AgentExecutionTrace'
+      });
       const supabase = createSupabaseBrowserClient();
       const tokenResponse = await apiRequest('/api/admin/agents/realtime-token');
+      logRealtime('token response', { ok: tokenResponse.ok, hasAccessToken: Boolean(tokenResponse.data?.accessToken) });
       if (tokenResponse.ok && tokenResponse.data?.accessToken) supabase.realtime.setAuth(tokenResponse.data.accessToken);
-      if (disposed) return;
+      if (disposed) {
+        logRealtime('connection cancelled before channel creation');
+        return;
+      }
+      logRealtime('channel creation', { topic: 'admin-agent-operations' });
       channel = supabase.channel('admin-agent-operations')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'AgentExecutionTrace' }, () => { sync(); })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'AgentExecutionEvent' }, (payload) => {
@@ -115,19 +131,34 @@ export default function AdminAgentOperationsPage({ user }) {
           if (id) eventIds.current.add(id);
           sync({ incremental: true });
         })
-        .subscribe((status) => {
+        .subscribe((status, error) => {
+          logRealtime('channel status', {
+            status,
+            errorName: error?.name || null,
+            errorMessage: error?.message || null
+          });
           if (status === 'SUBSCRIBED') { setConnection('Live'); sync(); clearInterval(timer); }
           else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') beginPolling();
           else if (status === 'RECONNECTING') setConnection('Reconnecting');
         });
-      } catch (_error) { beginPolling(); }
+      } catch (error) {
+        logRealtime('setup failed', { errorName: error?.name || null, errorMessage: error?.message || null });
+        beginPolling();
+      }
     };
     connect();
     const onFocus = () => sync({ incremental: true });
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
-    return () => { disposed = true; clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); if (channel) channel.unsubscribe(); };
-  }, [overview.activeRuns, sync]);
+    return () => {
+      disposed = true;
+      logRealtime('cleanup', { hasChannel: Boolean(channel) });
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+      if (channel) channel.unsubscribe();
+    };
+  }, [overview.activeRuns, sync, user?.id, user?.role]);
 
   const selected = detail || traces.find((trace) => trace.id === selectedId);
   const filteredTraces = useMemo(() => traces.filter((trace) => filter === 'all' || trace.status === filter || (filter === 'real-ai' && trace.run?.plan?.fallbackUsed === false) || (filter === 'fallback' && trace.run?.plan?.fallbackUsed === true)), [filter, traces]);
