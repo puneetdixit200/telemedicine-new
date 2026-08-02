@@ -174,6 +174,11 @@ async function planNoShowRecovery(context, input = {}) {
       maxTokens: 700
     });
     const parsed = tryParseJson(text);
+    console.log('[agent-planner] no-show model response shape', {
+      model: getAiModel(),
+      responseLength: String(text || '').length,
+      keys: parsed && typeof parsed === 'object' ? Object.keys(parsed) : []
+    });
     if (!parsed || !clean(parsed.patientMessage) || !clean(parsed.summary)) throw new Error('Invalid model plan.');
     const plan = {
       ...fallback,
@@ -217,6 +222,11 @@ async function planPostVisitFollowUp(context, input = {}) {
       maxTokens: 700
     });
     const parsed = tryParseJson(text);
+    console.log('[agent-planner] post-visit model response shape', {
+      model: getAiModel(),
+      responseLength: String(text || '').length,
+      keys: parsed && typeof parsed === 'object' ? Object.keys(parsed) : []
+    });
     if (!parsed || !clean(parsed.patientFriendlySummary)) throw new Error('Invalid model plan.');
     const generatedInstructions = Array.isArray(parsed.medicationExplanation) ? parsed.medicationExplanation : [];
     const merged = prescriptionItems.map((item, index) => ({
