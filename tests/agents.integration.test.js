@@ -20,4 +20,13 @@ describe('agent API routes', () => {
     expect(unversioned.body).toMatchObject({ code: 'UNAUTHORIZED' });
     expect(versioned.body).toMatchObject({ code: 'UNAUTHORIZED' });
   });
+
+  it('protects the admin operations API under both API prefixes', async () => {
+    const unversioned = await request(app).get('/api/admin/agents/overview');
+    const versioned = await request(app).get('/api/v1/admin/agents/overview');
+    expect(unversioned.status).toBe(401);
+    expect(versioned.status).toBe(401);
+    expect(unversioned.body.code).toBe('UNAUTHORIZED');
+    expect(versioned.body.code).toBe('UNAUTHORIZED');
+  });
 });

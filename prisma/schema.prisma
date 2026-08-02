@@ -53,6 +53,42 @@ enum AgentActionStatus {
   skipped
 }
 
+enum AgentTraceStatus {
+  active
+  awaiting_approval
+  executing
+  completed
+  partially_completed
+  failed
+  deduplicated
+  cancelled
+}
+
+enum AgentEventPhase {
+  trigger
+  context
+  policy
+  deduplication
+  planning
+  validation
+  persistence
+  approval
+  execution
+  notification
+  completion
+  system
+}
+
+enum AgentEventStatus {
+  started
+  progress
+  completed
+  failed
+  skipped
+  warning
+  info
+}
+
 enum AgentRiskLevel {
   low
   medium
@@ -220,6 +256,7 @@ model User {
   externalConsultMessages      ExternalConsultMessage[]      @relation("external_message_actor")
   agentRunsRequested           AgentRun[]                    @relation("agent_runs_requested_by")
   agentActionsApproved         AgentAction[]                 @relation("agent_actions_approved_by")
+  agentExecutionTraces         AgentExecutionTrace[]         @relation("agent_traces_requested_by")
   voiceNotes                   ConsultationVoiceNote[]       @relation("voice_note_author")
   secondOpinionAsPatient       SecondOpinionRequest[]        @relation("second_opinion_patient")
   secondOpinionAsRequester     SecondOpinionRequest[]        @relation("second_opinion_requested_by")
@@ -318,6 +355,7 @@ model Appointment {
   referralsTo           Referral[]                    @relation("referral_to_appointment")
   externalThread        ExternalConsultThread?
   agentRuns             AgentRun[]
+  agentExecutionTraces  AgentExecutionTrace[]
   voiceNotes            ConsultationVoiceNote[]
   emergencyEscalations  EmergencyEscalation[]
   carePlanCheckIns      CarePlanCheckIn[]
@@ -898,7 +936,9 @@ model AgentRun {
   startedAt   DateTime  @default(now())
   completedAt DateTime?
 
-  actions AgentAction[]
+  actions         AgentAction[]
+  executionTrace  AgentExecutionTrace?
+  executionEvents AgentExecutionEvent[]
 
   @@index([appointmentId, agentType, createdAt])
   @@index([requestedById, createdAt])
@@ -934,8 +974,62 @@ model AgentAction {
   approvedAt DateTime?
   executedAt DateTime?
 
+  executionEvents AgentExecutionEvent[]
+
   @@index([runId, status])
   @@index([approvedById, approvedAt])
+}
+
+model AgentExecutionTrace {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  correlationId String      @unique
+  requestId     String?
+  agentType     AgentType
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User        @relation("agent_traces_requested_by", fields: [requestedById], references: [id], onDelete: Cascade)
+  runId         String?     @unique
+  run           AgentRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  status       AgentTraceStatus @default(active)
+  startedAt    DateTime         @default(now())
+  completedAt  DateTime?
+  errorCode    String?
+  errorMessage String?
+
+  events AgentExecutionEvent[]
+
+  @@index([status, createdAt])
+  @@index([appointmentId, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([agentType, createdAt])
+}
+
+model AgentExecutionEvent {
+  id         String              @id @default(uuid())
+  createdAt  DateTime            @default(now())
+  traceId    String
+  trace      AgentExecutionTrace @relation(fields: [traceId], references: [id], onDelete: Cascade)
+  runId      String?
+  run        AgentRun?           @relation(fields: [runId], references: [id], onDelete: SetNull)
+  actionId   String?
+  action     AgentAction?        @relation(fields: [actionId], references: [id], onDelete: SetNull)
+  phase      AgentEventPhase
+  eventType  String
+  status     AgentEventStatus
+  title      String
+  message    String?
+  durationMs Int?
+  metadata   Json?
+
+  @@index([traceId, createdAt])
+  @@index([runId, createdAt])
+  @@index([actionId, createdAt])
+  @@index([phase, status, createdAt])
 }
 
 model ConsultationVoiceNote {

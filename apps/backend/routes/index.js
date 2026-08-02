@@ -15,6 +15,7 @@ const healthRoutes = require('./health.routes');
 const innovationRoutes = require('./innovation.routes');
 const medicinesRoutes = require('./medicines.routes');
 const agentsRoutes = require('./agents.routes');
+const adminAgentsRoutes = require('./admin-agents.routes');
 
 function serializeSessionUser(user) {
   if (!user) return null;
@@ -50,6 +51,7 @@ function registerApiRoutes(apiRouter) {
   apiRouter.use('/innovations', innovationRoutes);
   apiRouter.use('/medicines', medicinesRoutes);
   apiRouter.use('/agents', agentsRoutes);
+  apiRouter.use('/admin/agents', adminAgentsRoutes);
 }
 
 module.exports = { registerApiRoutes, documentsRoutes, serializeSessionUser };
