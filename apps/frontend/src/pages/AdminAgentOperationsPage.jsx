@@ -118,9 +118,12 @@ export default function AdminAgentOperationsPage({ user }) {
         eventTable: 'AgentExecutionEvent',
         traceTable: 'AgentExecutionTrace'
       });
-      const supabase = createSupabaseBrowserClient();
       const tokenResponse = await apiRequest('/api/admin/agents/realtime-token');
       logRealtime('token response', { ok: tokenResponse.ok, hasAccessToken: Boolean(tokenResponse.data?.accessToken) });
+      if (!tokenResponse.ok || !tokenResponse.data?.accessToken || !tokenResponse.data?.url || !tokenResponse.data?.anonKey) {
+        throw new Error('Realtime public configuration unavailable.');
+      }
+      const supabase = createSupabaseBrowserClient({ url: tokenResponse.data.url, anonKey: tokenResponse.data.anonKey });
       if (tokenResponse.ok && tokenResponse.data?.accessToken) {
         await supabase.realtime.setAuth(tokenResponse.data.accessToken);
       }
