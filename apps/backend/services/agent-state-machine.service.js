@@ -26,6 +26,8 @@ const ACTION_TRANSITIONS = {
 const AGENT_EVENT_DEFINITIONS = Object.freeze({
   request_received: { phase: 'trigger', effect: 'start' },
   trace_created: { phase: 'trigger', effect: 'complete' },
+  actor_identified: { phase: 'trigger', effect: 'progress' },
+  agent_type_selected: { phase: 'trigger', effect: 'complete', terminalForPhase: true },
   context_loading_started: { phase: 'context', effect: 'start' },
   context_loading_completed: { phase: 'context', effect: 'complete' },
   context_loading_failed: { phase: 'context', effect: 'fail' },
