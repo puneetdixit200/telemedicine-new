@@ -39,6 +39,32 @@ describe('agent planner deterministic safety', () => {
     expect(plan.patientMessage).not.toMatch(/booked|delivered|diagnos/i);
   });
 
+  it.each([
+    ['English', 'Hello'],
+    ['Bengali', 'Nomoshkar'],
+    ['Gujarati', 'Namaste'],
+    ['Hindi', 'Namaste'],
+    ['Kannada', 'Namaskara'],
+    ['Malayalam', 'Namaskaram'],
+    ['Marathi', 'Namaskar'],
+    ['Nepali', 'Namaste'],
+    ['Odia', 'Namaskar'],
+    ['Punjabi', 'Sat Sri Akaal'],
+    ['Tamil', 'Vanakkam'],
+    ['Telugu', 'Namaskaram'],
+    ['Urdu', 'Assalamualaikum'],
+    [undefined, 'Namaste']
+  ])('uses the patient preferred language greeting for %s', (language, greeting) => {
+    const plan = buildNoShowFallback({
+      appointment: { id: 'appt-1' },
+      patient: { fullName: 'Asha', language },
+      doctor: { fullName: 'Ravi' },
+      availableSlots: []
+    });
+
+    expect(plan.patientMessage).toContain(`${greeting} Asha.`);
+  });
+
   it('copies medicine fields from the prescription in post-visit fallback', () => {
     const plan = buildPostVisitFallback({
       appointment: { id: 'appt-1' },

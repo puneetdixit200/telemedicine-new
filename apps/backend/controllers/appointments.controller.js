@@ -2,6 +2,7 @@ const { prisma } = require('../models/db');
 const { bookSchema, preconsultSchema, reviewSchema, noShowFollowUpSchema } = require('../models/schemas/appointments.schemas');
 const { getAppointmentPresence } = require('../services/presence.service');
 const { scheduleRemindersForAppointment, cancelScheduledRemindersForAppointment } = require('../services/reminder.service');
+const { getPatientGreeting } = require('../services/patient-language.service');
 
 function isMissingDoctorReviewTable(error) {
   return Boolean(
@@ -43,7 +44,7 @@ function buildNoShowFollowUpMessage(appointment, reason = '') {
   const doctorName = String(appointment.doctor?.fullName || 'Doctor').trim();
   const reasonPart = reason ? ` Reason noted: ${reason}.` : '';
 
-  return `Namaste ${patientName}. We could not connect for your consultation with Dr. ${doctorName}.${reasonPart} Please open your appointment to rebook, or reply here if you need support.`;
+  return `${getPatientGreeting(appointment.patient?.language)} ${patientName}. We could not connect for your consultation with Dr. ${doctorName}.${reasonPart} Please open your appointment to rebook, or reply here if you need support.`;
 }
 
 function buildHelperPhoneWhere(phone) {

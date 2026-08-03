@@ -1,5 +1,6 @@
 const { aiGenerate, tryParseJson, getAiModel } = require('./ollama.service');
 const { validateMedicationFidelity } = require('./agent-policy.service');
+const { getPatientGreeting } = require('./patient-language.service');
 
 const GENERIC_WARNING =
   'Seek urgent in-person care if symptoms suddenly become severe, breathing becomes difficult, the patient faints, or there is severe bleeding.';
@@ -36,11 +37,12 @@ function buildNoShowFallback(context) {
   const doctorName = clean(context.doctor?.fullName, 'Doctor');
   const slotLabels = (context.availableSlots || []).map((slot) => formatIstDateTime(slot.startAt));
   const slotText = slotLabels.length ? slotLabels.join(', ') : 'No new slots are currently available';
+  const greeting = getPatientGreeting(context.patient?.language);
 
   return {
     summary: `Recovery plan for a missed appointment with Dr. ${doctorName}.`,
     patientMessage:
-      `Namaste ${patientName}. We could not connect for your consultation with Dr. ${doctorName}. ` +
+      `${greeting} ${patientName}. We could not connect for your consultation with Dr. ${doctorName}. ` +
       `Available times: ${slotText}. Use the rebooking link or reply if you need help.`,
     rationale: ['The appointment is marked as no-show.', `${slotLabels.length} future slot(s) were found.`],
     availableSlotLabels: slotLabels,
