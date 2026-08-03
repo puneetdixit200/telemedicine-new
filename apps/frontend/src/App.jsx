@@ -2385,6 +2385,21 @@ function DashboardPage() {
           </Link>
         ) : null}
 
+        {user?.role === 'admin' ? (
+          <Link className="sanctuary-action sanctuary-action-neutral" to="/admin/ai-agents">
+            <span className="material-symbols-outlined sanctuary-bg-icon" aria-hidden="true">
+              monitoring
+            </span>
+            <span className="sanctuary-icon-badge" aria-hidden="true">
+              <span className="material-symbols-outlined">smart_toy</span>
+            </span>
+            <span className="sanctuary-action-content">
+              <strong>AI Agent Operations Center</strong>
+              <span>Monitor live agent runs, approvals, actions, and patient results.</span>
+            </span>
+          </Link>
+        ) : null}
+
         <Link className="sanctuary-action sanctuary-action-neutral" to="/ai-copilot">
           <span className="material-symbols-outlined sanctuary-bg-icon" aria-hidden="true">
             smart_toy
