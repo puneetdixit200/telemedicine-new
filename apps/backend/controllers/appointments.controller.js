@@ -41,12 +41,9 @@ function isMissingExternalConsultTable(error) {
 function buildNoShowFollowUpMessage(appointment, reason = '') {
   const patientName = String(appointment.patient?.fullName || 'Patient').trim();
   const doctorName = String(appointment.doctor?.fullName || 'Doctor').trim();
-  const quickRebookPath = `/book?doctorId=${encodeURIComponent(appointment.doctorId)}&fromAppointmentId=${encodeURIComponent(
-    appointment.id
-  )}&rebook=1`;
   const reasonPart = reason ? ` Reason noted: ${reason}.` : '';
 
-  return `Namaste ${patientName}. We could not connect for your consultation with Dr. ${doctorName}.${reasonPart} Reply here if you need support, or quickly rebook here: ${quickRebookPath}`;
+  return `Namaste ${patientName}. We could not connect for your consultation with Dr. ${doctorName}.${reasonPart} Please open your appointment to rebook, or reply here if you need support.`;
 }
 
 function buildHelperPhoneWhere(phone) {
