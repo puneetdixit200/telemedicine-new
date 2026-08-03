@@ -2,7 +2,8 @@ const { prisma } = require('../models/db');
 const { bookSchema, preconsultSchema, reviewSchema, noShowFollowUpSchema } = require('../models/schemas/appointments.schemas');
 const { getAppointmentPresence } = require('../services/presence.service');
 const { scheduleRemindersForAppointment, cancelScheduledRemindersForAppointment } = require('../services/reminder.service');
-const { getPatientGreeting } = require('../services/patient-language.service');
+const { createNoShowRecoveryPlan } = require('../services/agent-orchestrator.service');
+const { createAgentTrace, safeRecordAgentEvent, failAgentTrace } = require('../services/agent-observability.service');
 
 function isMissingDoctorReviewTable(error) {
   return Boolean(
@@ -29,22 +30,6 @@ function normalizePhone(value) {
   return String(value || '')
     .replace(/[^0-9]/g, '')
     .trim();
-}
-
-function isMissingExternalConsultTable(error) {
-  return Boolean(
-    error &&
-      error.code === 'P2021' &&
-      /externalconsultthread|externalconsultmessage/i.test(String(error.meta?.table || ''))
-  );
-}
-
-function buildNoShowFollowUpMessage(appointment, reason = '') {
-  const patientName = String(appointment.patient?.fullName || 'Patient').trim();
-  const doctorName = String(appointment.doctor?.fullName || 'Doctor').trim();
-  const reasonPart = reason ? ` Reason noted: ${reason}.` : '';
-
-  return `${getPatientGreeting(appointment.patient?.language)} ${patientName}. We could not connect for your consultation with Dr. ${doctorName}.${reasonPart} Please open your appointment to rebook, or reply here if you need support.`;
 }
 
 function buildHelperPhoneWhere(phone) {
@@ -681,89 +666,30 @@ const appointmentsController = {
         });
       }
 
-      if (appt.status !== 'no_show') {
-        await prisma.appointment.update({
-          where: { id: appointmentId },
-          data: { status: 'no_show' }
-        });
-      }
-
-      await cancelScheduledRemindersForAppointment(appointmentId).catch(() => {});
-
-      const followUp = {
-        threadId: null,
-        messageId: null,
-        warning: null
-      };
-
       const reason = String(parsed.data.reason || '').trim();
-      const customMessage = String(parsed.data.message || '').trim();
-
-      if (!String(appt.patient?.phone || '').trim()) {
-        followUp.warning = 'Patient phone is missing, so async follow-up draft was not created.';
-      } else {
-        try {
-          const drafted = await prisma.$transaction(async (tx) => {
-            const thread = await tx.externalConsultThread.upsert({
-              where: { appointmentId: appt.id },
-              update: {
-                channel: 'whatsapp',
-                contactPhone: appt.patient.phone
-              },
-              create: {
-                appointmentId: appt.id,
-                patientId: appt.patientId,
-                channel: 'whatsapp',
-                contactPhone: appt.patient.phone
-              }
-            });
-
-            const quickRebookPath = `/book?doctorId=${encodeURIComponent(appt.doctorId)}&fromAppointmentId=${encodeURIComponent(
-              appt.id
-            )}&rebook=1`;
-            const body = customMessage || buildNoShowFollowUpMessage(appt, reason);
-
-            const message = await tx.externalConsultMessage.create({
-              data: {
-                threadId: thread.id,
-                direction: 'outbound',
-                body,
-                syncedById: req.user.id,
-                deliveryStatus: 'queued',
-                metadata: {
-                  type: 'no_show_follow_up',
-                  reason: reason || null,
-                  quickRebookPath
-                }
-              }
-            });
-
-            await tx.externalConsultThread.update({
-              where: { id: thread.id },
-              data: { lastMessageAt: new Date() }
-            });
-
-            return { threadId: thread.id, messageId: message.id };
-          });
-
-          followUp.threadId = drafted.threadId;
-          followUp.messageId = drafted.messageId;
-        } catch (error) {
-          if (!isMissingExternalConsultTable(error)) throw error;
-          followUp.warning =
-            'No-show was recorded, but async follow-up tables are unavailable. Apply latest migration to enable message drafts.';
-        }
+      if (appt.status === 'booked') {
+        const occurrenceId = require('crypto').randomUUID();
+        await prisma.appointment.updateMany({ where: { id: appointmentId, status: 'booked' }, data: { status: 'no_show', noShowVersion: { increment: 1 }, noShowOccurrenceId: occurrenceId } });
+        await cancelScheduledRemindersForAppointment(appointmentId).catch((error) => console.warn('[agent] reminder cancellation failed', { appointmentId, error: String(error?.message || error).slice(0, 160) }));
+      }
+      const trace = await createAgentTrace({ agentType: 'no_show_recovery', appointmentId, requestedById: req.user.id, requestId: req.requestId });
+      await safeRecordAgentEvent({ traceId: trace.traceId, phase: 'trigger', eventType: 'request_received', status: 'info', title: 'No-show follow-up request received', metadata: { status: 'accepted' } });
+      await safeRecordAgentEvent({ traceId: trace.traceId, phase: 'trigger', eventType: 'trace_created', status: 'completed', title: 'Execution trace created' });
+      let run;
+      try {
+        run = await createNoShowRecoveryPlan({ appointmentId, actor: req.user, input: { reason }, traceContext: trace });
+      } catch (error) {
+        await failAgentTrace(trace.traceId, error).catch(() => {});
+        throw error;
       }
 
       const refreshed = await ensureAppointmentAccess(appointmentId, req.user);
-      const successMessage = followUp.warning
-        ? `Appointment marked as no-show. ${followUp.warning}`
-        : followUp.messageId
-          ? 'Appointment marked as no-show and follow-up draft saved.'
-          : 'Appointment marked as no-show.';
+      const successMessage = run?.status === 'deduplicated'
+        ? 'An agent run already exists for this no-show occurrence. No duplicate run or notification was created.'
+        : 'Appointment marked as no-show. A new AI follow-up draft is being prepared for administrator approval. The patient has not been notified yet.';
 
       return renderAppointmentPage(res, req.user, refreshed || appt, {
-        followUp,
+        followUp: { threadId: null, messageId: null, warning: null, runId: run?.id || null, traceId: trace.traceId },
         message: successMessage
       });
     } catch (e) {

@@ -4740,6 +4740,7 @@ function AppointmentDetailPage() {
   const [preconsultMessage, setPreconsultMessage] = useState('');
   const [preconsultDraftMessage, setPreconsultDraftMessage] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const [noShowSubmitting, setNoShowSubmitting] = useState(false);
   const [preconsult, setPreconsult] = useState({ problemDescription: '', medicationsText: '' });
   const [voiceNoteForm, setVoiceNoteForm] = useState({ transcriptText: '', summaryText: '' });
   const [voiceNoteMessage, setVoiceNoteMessage] = useState('');
@@ -4898,6 +4899,18 @@ function AppointmentDetailPage() {
     }
     if (result.ok && successLabel) {
       setActionMessage(result.message || successLabel);
+    }
+  };
+
+  const markNoShowAndFollowUp = async () => {
+    if (noShowSubmitting) return;
+    setNoShowSubmitting(true);
+    try {
+      await runAction(`/api/appointments/${appointment.id}/no-show-followup`, 'Appointment marked no-show. Follow-up is awaiting administrator approval.', {
+        idempotencyKey: globalThis.crypto?.randomUUID?.() || `${appointment.id}-${Date.now()}`
+      });
+    } finally {
+      setNoShowSubmitting(false);
     }
   };
 
@@ -5434,15 +5447,10 @@ function AppointmentDetailPage() {
                   <button
                     type="button"
                     className="doctor-appointment-sub-btn"
-                    disabled={appointment.status !== 'booked'}
-                    onClick={() =>
-                      runAction(
-                        `/api/appointments/${appointment.id}/no-show-followup`,
-                        'Appointment marked no-show and follow-up drafted.'
-                      )
-                    }
+                    disabled={appointment.status !== 'booked' || noShowSubmitting}
+                    onClick={markNoShowAndFollowUp}
                   >
-                    Mark No-show + Follow-up
+                    {noShowSubmitting ? 'Preparing follow-up...' : 'Mark No-show + Follow-up'}
                   </button>
                 ) : null}
               </div>
@@ -5468,11 +5476,11 @@ function AppointmentDetailPage() {
           ) : null}
 
           {canManageAgentPlan && ['booked', 'no_show'].includes(appointment.status) ? (
-            <AgentPlanPanel appointment={appointment} agentType="no-show" />
+            <AgentPlanPanel appointment={appointment} agentType="no-show" user={user} />
           ) : null}
 
           {canManageAgentPlan && appointment.status === 'completed' && appointment.prescription ? (
-            <AgentPlanPanel appointment={appointment} agentType="post-visit" />
+            <AgentPlanPanel appointment={appointment} agentType="post-visit" user={user} />
           ) : null}
 
           <div className="doctor-appointment-grid">
@@ -6337,7 +6345,7 @@ function PrescriptionPage() {
       ) : null}
 
       {canManageAgentPlan && appointment.status === 'completed' && prescription ? (
-        <AgentPlanPanel appointment={appointment} agentType="post-visit" />
+        <AgentPlanPanel appointment={appointment} agentType="post-visit" user={user} />
       ) : null}
 
       {isDoctorOwner ? (

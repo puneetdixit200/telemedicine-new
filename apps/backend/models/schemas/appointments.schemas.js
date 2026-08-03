@@ -20,7 +20,8 @@ const reviewSchema = z.object({
 
 const noShowFollowUpSchema = z.object({
   reason: z.string().max(280).optional().or(z.literal('')),
-  message: z.string().max(1600).optional().or(z.literal(''))
+  message: z.string().max(1600).optional().or(z.literal('')),
+  idempotencyKey: z.string().trim().max(120).optional().or(z.literal(''))
 });
 
 module.exports = { bookSchema, preconsultSchema, reviewSchema, noShowFollowUpSchema };

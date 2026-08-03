@@ -61,6 +61,7 @@ async function listPatientNotifications(patientId) {
       id: message.id,
       appointmentId: message.thread?.appointmentId || null,
       body: message.body,
+      title: message.title || metadata.notificationTitle || 'Care update from your clinic',
       createdAt: message.createdAt,
       metadata
     };

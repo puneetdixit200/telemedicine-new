@@ -335,9 +335,11 @@ model Appointment {
   referredFromAppointment   Appointment?  @relation("appointment_referred_from", fields: [referredFromAppointmentId], references: [id], onDelete: SetNull)
   referralChildren          Appointment[] @relation("appointment_referred_from")
 
-  startAt DateTime
-  status  AppointmentStatus @default(booked)
-  mode    ConsultationMode  @default(video)
+  startAt            DateTime
+  status             AppointmentStatus @default(booked)
+  noShowVersion      Int               @default(0)
+  noShowOccurrenceId String?
+  mode               ConsultationMode  @default(video)
 
   problemDescription String?
   medicationsText    String?
@@ -372,6 +374,7 @@ model Appointment {
   @@index([doctorId, status, startAt])
   @@index([patientId, status, startAt])
   @@index([status, startAt])
+  @@index([noShowOccurrenceId])
   @@index([familyMemberId])
   @@index([triageLevel])
   @@index([caseRootAppointmentId])
@@ -909,6 +912,9 @@ model ExternalConsultMessage {
   syncedBy   User?   @relation("external_message_actor", fields: [syncedById], references: [id], onDelete: SetNull)
 
   deliveryStatus String?
+  title          String?
+  agentActionId  String? @unique
+  messageDraftId String?
   metadata       Json?
 
   @@index([threadId, createdAt])
@@ -944,6 +950,8 @@ model AgentRun {
   actions         AgentAction[]
   executionTraces AgentExecutionTrace[]
   executionEvents AgentExecutionEvent[]
+  messageDrafts   AgentMessageDraft[]
+  executionSteps  AgentExecutionStep[]
 
   @@index([appointmentId, agentType, createdAt])
   @@index([requestedById, createdAt])
@@ -976,8 +984,10 @@ model AgentAction {
   approvedById String?
   approvedBy   User?   @relation("agent_actions_approved_by", fields: [approvedById], references: [id], onDelete: SetNull)
 
-  approvedAt DateTime?
-  executedAt DateTime?
+  approvedAt          DateTime?
+  executedAt          DateTime?
+  messageDraftId      String?
+  approvedContentHash String?
 
   executionEvents AgentExecutionEvent[]
 
@@ -985,22 +995,92 @@ model AgentAction {
   @@index([approvedById, approvedAt])
 }
 
+enum AgentMessageDraftStatus {
+  draft
+  approved
+  superseded
+  delivered
+  rejected
+}
+
+enum AgentExecutionStepStatus {
+  pending
+  waiting
+  executing
+  completed
+  failed
+  skipped
+}
+
+model AgentMessageDraft {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runId                String
+  run                  AgentRun                @relation(fields: [runId], references: [id], onDelete: Cascade)
+  version              Int
+  status               AgentMessageDraftStatus @default(draft)
+  languageCode         String
+  languageName         String
+  languageScript       String
+  languageDirection    String
+  languageSource       String
+  languageFallbackUsed Boolean                 @default(false)
+  notificationTitle    String
+  notificationBody     String
+  generationSource     String
+  contentHash          String
+  approvedById         String?
+  approvedAt           DateTime?
+  deliveredAt          DateTime?
+
+  @@unique([runId, version])
+  @@index([runId, status])
+}
+
+model AgentExecutionStep {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runId        String
+  run          AgentRun                 @relation(fields: [runId], references: [id], onDelete: Cascade)
+  traceId      String?
+  actionId     String?
+  sequence     Int
+  stepKey      String
+  title        String
+  status       AgentExecutionStepStatus @default(pending)
+  notBefore    DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  durationMs   Int?
+  errorCode    String?
+  errorMessage String?
+  metadata     Json?
+
+  @@unique([runId, stepKey])
+  @@unique([runId, sequence])
+  @@index([runId, status, sequence])
+}
+
 model AgentExecutionTrace {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  correlationId String      @unique
+  correlationId String         @unique
   requestId     String?
   agentType     AgentType
   appointmentId String
-  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   requestedById String
-  requestedBy   User        @relation("agent_traces_requested_by", fields: [requestedById], references: [id], onDelete: Cascade)
+  requestedBy   User           @relation("agent_traces_requested_by", fields: [requestedById], references: [id], onDelete: Cascade)
   traceKind     AgentTraceKind @default(execution)
   sourceTraceId String?
   runId         String?
-  run           AgentRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+  run           AgentRun?      @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   status       AgentTraceStatus @default(active)
   startedAt    DateTime         @default(now())

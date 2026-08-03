@@ -35,26 +35,14 @@ describe('agent planner deterministic safety', () => {
       fallbackUsed: true,
       model: 'deterministic-fallback'
     });
-    expect(plan.patientMessage).toContain('Use the rebooking link or reply if you need help.');
+    expect(plan.patientMessage).toContain('दोबारा बुक करने के लिए यहां जाएं: /book?doctorId=doc-1&rebook=1');
     expect(plan.patientMessage).not.toMatch(/booked|delivered|diagnos/i);
   });
 
   it.each([
-    ['English', 'Hello'],
-    ['Bengali', 'Nomoshkar'],
-    ['Gujarati', 'Namaste'],
-    ['Hindi', 'Namaste'],
-    ['Kannada', 'Namaskara'],
-    ['Malayalam', 'Namaskaram'],
-    ['Marathi', 'Namaskar'],
-    ['Nepali', 'Namaste'],
-    ['Odia', 'Namaskar'],
-    ['Punjabi', 'Sat Sri Akaal'],
-    ['Tamil', 'Vanakkam'],
-    ['Telugu', 'Namaskaram'],
-    ['Urdu', 'Assalamualaikum'],
-    [undefined, 'Namaste']
-  ])('uses the patient preferred language greeting for %s', (language, greeting) => {
+    ['English', 'en'], ['Bengali', 'bn'], ['Gujarati', 'gu'], ['Hindi', 'hi'], ['Kannada', 'kn'], ['Malayalam', 'ml'],
+    ['Marathi', 'mr'], ['Nepali', 'ne'], ['Odia', 'or'], ['Punjabi', 'pa'], ['Tamil', 'ta'], ['Telugu', 'te'], ['Urdu', 'ur'], [undefined, 'hi']
+  ])('uses the patient preferred language greeting for %s', (language, code) => {
     const plan = buildNoShowFallback({
       appointment: { id: 'appt-1' },
       patient: { fullName: 'Asha', language },
@@ -62,7 +50,8 @@ describe('agent planner deterministic safety', () => {
       availableSlots: []
     });
 
-    expect(plan.patientMessage).toContain(`${greeting} Asha.`);
+    expect(plan.languageCode).toBe(code);
+    expect(plan.patientMessage).toContain('Asha.');
   });
 
   it('copies medicine fields from the prescription in post-visit fallback', () => {
@@ -123,8 +112,9 @@ describe('agent planner deterministic safety', () => {
   it('uses a valid OpenRouter JSON draft without fallback', async () => {
     aiGenerate.mockResolvedValue(
       JSON.stringify({
-        summary: 'A respectful missed-visit recovery draft.',
-        patientMessage: 'Please confirm a new consultation time.',
+        adminSummary: 'A respectful missed-visit recovery draft.',
+        notificationTitle: 'Missed appointment follow-up',
+        patientMessage: 'Please confirm a new consultation time. Rebook here: /book?doctorId=doc-1',
         rationale: ['The appointment was marked no-show.'],
         safetyNotes: ['No medical advice is included.']
       })
@@ -136,7 +126,7 @@ describe('agent planner deterministic safety', () => {
         patient: { fullName: 'Asha', language: 'English' },
         doctor: { fullName: 'Ravi' },
         availableSlots: [],
-        quickRebookPath: '/book?doctorId=doc-1',
+      quickRebookPath: '/book?doctorId=doc-1',
         priorNoShowCount: 0
       },
       {}
@@ -145,7 +135,7 @@ describe('agent planner deterministic safety', () => {
     expect(result.plan).toMatchObject({
       fallbackUsed: false,
       model: 'openai/gpt-oss-120b',
-      patientMessage: 'Please confirm a new consultation time.'
+      patientMessage: 'Please confirm a new consultation time. Rebook here: /book?doctorId=doc-1'
     });
   });
 

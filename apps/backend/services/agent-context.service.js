@@ -1,4 +1,5 @@
 const { prisma } = require('../models/db');
+const { resolvePatientLanguage } = require('./patient-language.service');
 
 function safeUser(user) {
   if (!user) return null;
@@ -61,10 +62,13 @@ async function loadNoShowContext(appointmentId) {
       mode: appointment.mode,
       problemDescription: appointment.problemDescription,
       updatedAt: appointment.updatedAt,
+      noShowOccurrenceId: appointment.noShowOccurrenceId,
+      noShowVersion: appointment.noShowVersion,
       patientId: appointment.patientId,
       doctorId: appointment.doctorId
     },
     patient: safeUser(appointment.patient),
+    patientLanguage: resolvePatientLanguage(appointment.patient),
     doctor: safeUser(appointment.doctor),
     availableSlots,
     priorNoShowCount,

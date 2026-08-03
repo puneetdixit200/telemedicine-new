@@ -1,6 +1,8 @@
 const { aiGenerate, tryParseJson, getAiModel } = require('./ollama.service');
 const { validateMedicationFidelity } = require('./agent-policy.service');
-const { getPatientGreeting } = require('./patient-language.service');
+const { resolvePatientLanguage } = require('./patient-language.service');
+const { buildNoShowLocalizedTemplate } = require('../locales/agent-messages');
+const { validateLocalizedAgentDraft } = require('./agent-language-validation.service');
 
 const GENERIC_WARNING =
   'Seek urgent in-person care if symptoms suddenly become severe, breathing becomes difficult, the patient faints, or there is severe bleeding.';
@@ -16,15 +18,15 @@ function ensureSentence(value) {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
-function formatIstDateTime(value) {
+function formatIstDateTime(value, locale = 'en-IN') {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Unknown time';
-  return `${date.toLocaleDateString('en-IN', {
+  return `${date.toLocaleDateString(locale, {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
     timeZone: 'Asia/Kolkata'
-  })}, ${date.toLocaleTimeString('en-IN', {
+  })}, ${date.toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
@@ -35,20 +37,34 @@ function formatIstDateTime(value) {
 function buildNoShowFallback(context) {
   const patientName = clean(context.patient?.fullName, 'Patient');
   const doctorName = clean(context.doctor?.fullName, 'Doctor');
-  const slotLabels = (context.availableSlots || []).map((slot) => formatIstDateTime(slot.startAt));
-  const slotText = slotLabels.length ? slotLabels.join(', ') : 'No new slots are currently available';
-  const greeting = getPatientGreeting(context.patient?.language);
+  const language = context.patientLanguage || resolvePatientLanguage(context.patient);
+  const slotLabels = (context.availableSlots || []).map((slot) => formatIstDateTime(slot.startAt, language.locale));
+  const slotText = slotLabels.join(', ');
+  const localized = buildNoShowLocalizedTemplate(language, {
+    patientName,
+    doctorName,
+    slotList: slotText,
+    rebookUrl: context.quickRebookPath
+  });
 
   return {
     summary: `Recovery plan for a missed appointment with Dr. ${doctorName}.`,
-    patientMessage:
-      `${greeting} ${patientName}. We could not connect for your consultation with Dr. ${doctorName}. ` +
-      `Available times: ${slotText}. Use the rebooking link or reply if you need help.`,
+    notificationTitle: localized.notificationTitle,
+    patientMessage: localized.notificationBody,
     rationale: ['The appointment is marked as no-show.', `${slotLabels.length} future slot(s) were found.`],
     availableSlotLabels: slotLabels,
     safetyNotes: ['This message does not provide medical advice.', 'Patient confirmation is required before rebooking.'],
     fallbackUsed: true,
-    model: 'deterministic-fallback'
+    model: 'deterministic-fallback',
+    provider: 'deterministic',
+    generationSource: localized.generationSource,
+    languageCode: language.code,
+    languageName: language.name,
+    languageNativeName: language.nativeName,
+    languageScript: language.script,
+    languageDirection: language.direction,
+    languageSource: language.source,
+    languageFallbackUsed: language.fallbackUsed
   };
 }
 
@@ -97,10 +113,18 @@ function noShowActions(context, plan) {
       arguments: {
         appointmentId: context.appointment.id,
         body: plan.patientMessage,
+        title: plan.notificationTitle,
         metadata: {
           type: 'agent_no_show_recovery',
           quickRebookPath: context.quickRebookPath,
-          offeredSlotIds: (context.availableSlots || []).map((slot) => slot.id)
+          offeredSlotIds: (context.availableSlots || []).map((slot) => slot.id),
+          languageCode: plan.languageCode,
+          languageName: plan.languageName,
+          languageScript: plan.languageScript,
+          languageDirection: plan.languageDirection,
+          languageSource: plan.languageSource,
+          languageFallbackUsed: plan.languageFallbackUsed,
+          generationSource: plan.generationSource
         }
       },
       riskLevel: 'high',
@@ -159,10 +183,15 @@ function postVisitActions(context, plan) {
 async function planNoShowRecovery(context, input = {}) {
   const fallback = buildNoShowFallback(context);
   try {
+    const language = context.patientLanguage || resolvePatientLanguage(context.patient);
     const promptContext = {
       patientDisplayName: context.patient?.fullName || 'Patient',
       doctorName: context.doctor?.fullName || 'Doctor',
-      language: input.preferredLanguage || context.patient?.language || 'English',
+      targetLanguageCode: language.code,
+      targetLanguageName: language.name,
+      targetLanguageNativeName: language.nativeName,
+      targetScript: language.script,
+      targetDirection: language.direction,
       appointmentStatus: context.appointment.status,
       availableSlotLabels: fallback.availableSlotLabels,
       quickRebookPath: context.quickRebookPath,
@@ -170,7 +199,7 @@ async function planNoShowRecovery(context, input = {}) {
     };
     const text = await aiGenerate({
       systemPrompt:
-        'You are a care-coordination drafting assistant inside a telemedicine workflow. Return one valid JSON object with exactly these keys: summary (string), patientMessage (string), rationale (array of strings), safetyNotes (array of strings). Do not diagnose or provide treatment. Draft a concise, respectful recovery message for a missed appointment. Use only supplied names, appointment context and available time labels. Do not claim a slot is booked. Ask the patient to confirm or use the provided rebooking path.',
+        'You are a care-coordination drafting assistant inside a telemedicine workflow. Return one valid JSON object with exactly these keys: adminSummary (string), notificationTitle (string), patientMessage (string), rationale (array of strings), safetyNotes (array of strings). Write notificationTitle and patientMessage entirely in the requested target language and preferred native script. Do not write patient-facing fields in English unless the target language is English. Names, URLs, immutable identifiers and exact date/time values may remain unchanged. Do not mix English headings into non-English patient-facing text. Do not diagnose, recommend treatment, or claim a slot has been booked. Ask the patient to confirm an offered time or use the exact rebooking link. Return valid JSON.',
       userPrompt: JSON.stringify(promptContext),
       temperature: 0.2,
       maxTokens: 700
@@ -181,23 +210,29 @@ async function planNoShowRecovery(context, input = {}) {
       responseLength: String(text || '').length,
       keys: parsed && typeof parsed === 'object' ? Object.keys(parsed) : []
     });
-    if (!parsed || !clean(parsed.patientMessage) || !clean(parsed.summary)) throw new Error('Invalid model plan.');
+    if (!parsed || !clean(parsed.patientMessage) || !clean(parsed.notificationTitle) || !clean(parsed.adminSummary || parsed.summary)) throw new Error('Invalid model plan.');
     const plan = {
       ...fallback,
-      summary: clean(parsed.summary, fallback.summary).slice(0, 1000),
+      summary: clean(parsed.adminSummary || parsed.summary, fallback.summary).slice(0, 1000),
+      notificationTitle: clean(parsed.notificationTitle, fallback.notificationTitle).slice(0, 240),
       patientMessage: clean(parsed.patientMessage, fallback.patientMessage).slice(0, 1600),
       rationale: Array.isArray(parsed.rationale) ? parsed.rationale.map((item) => clean(item)).filter(Boolean).slice(0, 5) : fallback.rationale,
       safetyNotes: Array.isArray(parsed.safetyNotes)
         ? parsed.safetyNotes.map((item) => clean(item)).filter(Boolean).slice(0, 5)
         : fallback.safetyNotes,
       fallbackUsed: false,
-      model: getAiModel()
+      model: getAiModel(),
+      provider: 'openrouter'
     };
+    validateLocalizedAgentDraft({ draft: plan, language, quickRebookPath: context.quickRebookPath, availableSlotLabels: fallback.availableSlotLabels, immutableTokens: [patientNameToken(context.patient), doctorNameToken(context.doctor)] });
     return { plan, actions: noShowActions(context, plan) };
   } catch (error) {
-    return { plan: { ...fallback, error: clean(error.message).slice(0, 300) }, actions: noShowActions(context, fallback) };
+    return { plan: { ...fallback, error: clean(error.message).slice(0, 300), validationFailure: error.code || null }, actions: noShowActions(context, fallback) };
   }
 }
+
+function patientNameToken(patient) { return clean(patient?.fullName); }
+function doctorNameToken(doctor) { return clean(doctor?.fullName); }
 
 async function planPostVisitFollowUp(context, input = {}) {
   const fallback = buildPostVisitFallback(context);

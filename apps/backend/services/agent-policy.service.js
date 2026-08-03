@@ -43,7 +43,12 @@ function assertCanGeneratePostVisitPlan(user, appointment) {
 }
 
 function assertCanApproveAgentRun(user, run) {
-  assertCanManageAppointment(user, run?.appointment);
+  if (!user) throw policyError('Authentication required.', 401, 'UNAUTHORIZED');
+  if (!run?.appointment) throw policyError('Agent run appointment not found.', 404, 'APPOINTMENT_NOT_FOUND');
+  if (run.agentType === 'no_show_recovery' && user.role !== 'admin') {
+    throw policyError('Only an administrator can approve or execute no-show recovery actions.', 403, 'AGENT_ADMIN_REQUIRED');
+  }
+  assertCanManageAppointment(user, run.appointment);
 }
 
 function assertAllowedTool(agentType, toolName) {
