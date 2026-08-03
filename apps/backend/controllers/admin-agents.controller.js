@@ -1,5 +1,7 @@
 const { prisma } = require('../models/db');
 const { createSupabaseExpressClient, getSupabaseAnonKey, getSupabaseUrl } = require('../services/supabase-auth.service');
+const { derivePipelineState, validateTraceInvariants, validateRunInvariants } = require('../services/agent-state-machine.service');
+const { findInconsistentAgentStates, reconcileTrace } = require('../services/agent-state-reconciliation.service');
 
 const TRACE_INCLUDE = {
   appointment: { select: { id: true, status: true, doctorId: true, patientId: true, startAt: true } },
@@ -52,8 +54,9 @@ function safeEvent(event) {
 
 function safeTrace(trace) {
   const run = trace.run;
+  const actions = run?.actions || [];
   return {
-    id: trace.id, correlationId: trace.correlationId, requestId: trace.requestId, agentType: trace.agentType,
+    id: trace.id, correlationId: trace.correlationId, requestId: trace.requestId, traceKind: trace.traceKind, sourceTraceId: trace.sourceTraceId, agentType: trace.agentType,
     appointmentId: trace.appointmentId, status: trace.status, startedAt: trace.startedAt,
     completedAt: trace.completedAt, createdAt: trace.createdAt, updatedAt: trace.updatedAt,
     errorCode: trace.errorCode, errorMessage: trace.errorMessage,
@@ -64,9 +67,21 @@ function safeTrace(trace) {
       id: run.id, agentType: run.agentType, status: run.status, dedupeKey: run.dedupeKey,
       triggeredBy: run.triggeredBy, summary: run.summary, plan: safePlan(run.plan), context: safeContext(run.context),
       startedAt: run.startedAt, completedAt: run.completedAt, createdAt: run.createdAt,
-      actions: (run.actions || []).map(safeAction)
+      actions: actions.map(safeAction)
     } : null,
-    events: (trace.events || []).map(safeEvent)
+    events: (trace.events || []).map(safeEvent),
+    presentation: {
+      traceStatus: trace.status,
+      outcome: trace.status === 'deduplicated' ? 'existing_run_reused' : trace.status,
+      currentPhase: trace.status === 'awaiting_approval' ? 'approval' : trace.status === 'executing' ? 'execution' : null,
+      isTerminal: ['completed', 'partially_completed', 'failed', 'deduplicated', 'cancelled'].includes(trace.status),
+      requiresHumanAction: trace.status === 'awaiting_approval',
+      linkedRunStatus: run?.status || null,
+      model: run?.plan?.model || null,
+      fallbackUsed: run?.plan?.fallbackUsed ?? null,
+      pipeline: derivePipelineState({ trace, run, actions, events: trace.events || [] }),
+      invariantErrors: [...validateTraceInvariants(trace, run, trace.events || []), ...validateRunInvariants(run)]
+    }
   };
 }
 
@@ -75,17 +90,28 @@ function parseLimit(value, fallback = 30) {
   return Number.isInteger(parsed) ? Math.min(Math.max(parsed, 1), 100) : fallback;
 }
 
+function parseCursor(value) {
+  if (!value) return null;
+  const [createdAt, id] = String(value).split('|');
+  const date = new Date(createdAt);
+  return Number.isNaN(date.getTime()) ? null : { createdAt: date, id: id || null };
+}
+
 async function listTraces(req) {
   const limit = parseLimit(req.query.limit);
   const where = {};
   if (req.query.status) where.status = String(req.query.status);
   if (req.query.agentType) where.agentType = String(req.query.agentType);
   if (req.query.activeOnly === 'true') where.status = { in: ['active', 'awaiting_approval', 'executing'] };
-  if (req.query.after) where.createdAt = { lt: new Date(String(req.query.after)) };
+  const cursor = parseCursor(req.query.after);
+  if (cursor) where.OR = cursor.id
+    ? [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }]
+    : [{ createdAt: { lt: cursor.createdAt } }];
   const traces = await prisma.agentExecutionTrace.findMany({ where, take: limit + 1, orderBy: { createdAt: 'desc' }, include: TRACE_INCLUDE });
   const hasMore = traces.length > limit;
   const rows = traces.slice(0, limit).map(safeTrace);
-  return { rows, nextCursor: hasMore ? rows[rows.length - 1].createdAt : null };
+  const last = rows[rows.length - 1];
+  return { rows, nextCursor: hasMore && last ? `${new Date(last.createdAt).toISOString()}|${last.id}` : null };
 }
 
 async function overview() {
@@ -127,16 +153,26 @@ const adminAgentsController = {
   events: async (req, res) => {
     const where = {};
     if (req.params.traceId) where.traceId = req.params.traceId;
-    if (req.query.after) where.createdAt = { gt: new Date(String(req.query.after)) };
+    const cursor = parseCursor(req.query.after);
+    if (cursor) where.OR = cursor.id
+      ? [{ createdAt: { gt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { gt: cursor.id } }]
+      : [{ createdAt: { gt: cursor.createdAt } }];
     const rows = await prisma.agentExecutionEvent.findMany({ where, take: 250, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
-    return res.json({ ok: true, events: rows.map(safeEvent), nextCursor: rows.length ? rows[rows.length - 1].createdAt : req.query.after || null });
+    const last = rows.at(-1);
+    return res.json({ ok: true, events: rows.map(safeEvent), nextCursor: last ? `${new Date(last.createdAt).toISOString()}|${last.id}` : req.query.after || null });
   },
   run: async (req, res) => {
-    const trace = await prisma.agentExecutionTrace.findUnique({ where: { runId: req.params.runId }, include: TRACE_INCLUDE });
+    const trace = await prisma.agentExecutionTrace.findFirst({ where: { runId: req.params.runId, status: { not: 'deduplicated' } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], include: TRACE_INCLUDE });
     if (!trace) return res.status(404).json({ ok: false, code: 'AGENT_RUN_NOT_FOUND', error: 'Agent run not found.' });
     return res.json({ ok: true, trace: safeTrace(trace) });
   },
-  metrics: async (req, res) => res.json({ ok: true, range: req.query.range || '24h', ...(await overview()) })
+  metrics: async (req, res) => res.json({ ok: true, range: req.query.range || '24h', ...(await overview()) }),
+  integrity: async (_req, res) => {
+    const integrity = await findInconsistentAgentStates();
+    const counts = Object.fromEntries(Object.entries(integrity).map(([key, value]) => [key, Array.isArray(value) ? value.length : 0]));
+    return res.json({ ok: true, integrity: { counts, samples: Object.fromEntries(Object.entries(integrity).map(([key, value]) => [key, Array.isArray(value) ? value.slice(0, 25) : []])) } });
+  },
+  reconcile: async (req, res) => res.json({ ok: true, result: await reconcileTrace(req.params.traceId, { dryRun: req.query.dryRun !== 'false' }) })
 };
 
 module.exports = { adminAgentsController, safeTrace, safeEvent, safePlan, safeContext, initials };

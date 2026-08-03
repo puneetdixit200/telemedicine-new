@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { prisma } = require('../models/db');
+const { transitionTraceStatus, AGENT_EVENT_DEFINITIONS } = require('./agent-state-machine.service');
 
 const SAFE_METADATA_KEYS = new Set([
   'provider', 'model', 'durationMs', 'responseLength', 'promptTokens', 'completionTokens', 'totalTokens',
@@ -38,6 +39,10 @@ async function createAgentTrace({ agentType, appointmentId, requestedById, reque
 
 async function recordAgentEvent({ traceId, runId, actionId, phase, eventType, status, title, message, durationMs, metadata } = {}) {
   if (!traceId) return null;
+  const definition = AGENT_EVENT_DEFINITIONS[eventType];
+  if (!definition) {
+    console.warn('[agent-observability] unregistered event type', { eventType: eventType || 'unknown', traceId, runId: runId || null });
+  }
   return prisma.agentExecutionEvent.create({
     data: {
       traceId, runId: runId || null, actionId: actionId || null, phase, eventType, status,
@@ -60,6 +65,21 @@ async function safeRecordAgentEvent(payload) {
   }
 }
 
+async function safeObservabilityOperation(operation, context = {}) {
+  try {
+    return await operation();
+  } catch (error) {
+    console.warn('[agent-observability] operation failed', {
+      operation: context.operation || 'unknown',
+      traceId: context.traceId || null,
+      runId: context.runId || null,
+      errorCode: error?.code || null,
+      errorMessage: String(error?.message || error).slice(0, 300)
+    });
+    return null;
+  }
+}
+
 async function linkTraceToRun(traceId, runId) {
   if (!traceId || !runId) return null;
   return prisma.agentExecutionTrace.update({ where: { id: traceId }, data: { runId } });
@@ -67,6 +87,10 @@ async function linkTraceToRun(traceId, runId) {
 
 async function updateTrace(traceId, data) {
   if (!traceId) return null;
+  if (data?.status && prisma.agentExecutionTrace?.findUnique) {
+    const current = await prisma.agentExecutionTrace.findUnique({ where: { id: traceId }, select: { status: true } });
+    if (current?.status) transitionTraceStatus({ from: current.status, to: data.status });
+  }
   return prisma.agentExecutionTrace.update({ where: { id: traceId }, data });
 }
 
@@ -96,5 +120,5 @@ async function withAgentPhase({ traceId, runId, actionId, phase, startEventType,
 
 module.exports = {
   createAgentTrace, linkTraceToRun, recordAgentEvent, safeRecordAgentEvent, sanitizeAgentEventMetadata,
-  completeAgentTrace, failAgentTrace, updateTrace, withAgentPhase, traceContext
+  completeAgentTrace, failAgentTrace, updateTrace, withAgentPhase, traceContext, safeObservabilityOperation
 };

@@ -64,6 +64,11 @@ enum AgentTraceStatus {
   cancelled
 }
 
+enum AgentTraceKind {
+  execution
+  deduplicated_request
+}
+
 enum AgentEventPhase {
   trigger
   context
@@ -937,7 +942,7 @@ model AgentRun {
   completedAt DateTime?
 
   actions         AgentAction[]
-  executionTrace  AgentExecutionTrace?
+  executionTraces AgentExecutionTrace[]
   executionEvents AgentExecutionEvent[]
 
   @@index([appointmentId, agentType, createdAt])
@@ -992,7 +997,9 @@ model AgentExecutionTrace {
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   requestedById String
   requestedBy   User        @relation("agent_traces_requested_by", fields: [requestedById], references: [id], onDelete: Cascade)
-  runId         String?     @unique
+  traceKind     AgentTraceKind @default(execution)
+  sourceTraceId String?
+  runId         String?
   run           AgentRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   status       AgentTraceStatus @default(active)
@@ -1007,6 +1014,7 @@ model AgentExecutionTrace {
   @@index([appointmentId, createdAt])
   @@index([requestedById, createdAt])
   @@index([agentType, createdAt])
+  @@index([runId, createdAt])
 }
 
 model AgentExecutionEvent {
