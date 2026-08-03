@@ -41,7 +41,18 @@ describe('agent planner deterministic safety', () => {
 
   it.each([
     ['English', 'Hello'],
+    ['Bengali', 'Nomoshkar'],
+    ['Gujarati', 'Namaste'],
     ['Hindi', 'Namaste'],
+    ['Kannada', 'Namaskara'],
+    ['Malayalam', 'Namaskaram'],
+    ['Marathi', 'Namaskar'],
+    ['Nepali', 'Namaste'],
+    ['Odia', 'Namaskar'],
+    ['Punjabi', 'Sat Sri Akaal'],
+    ['Tamil', 'Vanakkam'],
+    ['Telugu', 'Namaskaram'],
+    ['Urdu', 'Assalamualaikum'],
     [undefined, 'Namaste']
   ])('uses the patient preferred language greeting for %s', (language, greeting) => {
     const plan = buildNoShowFallback({
