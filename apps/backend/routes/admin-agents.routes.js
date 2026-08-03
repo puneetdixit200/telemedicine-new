@@ -12,5 +12,7 @@ router.get('/traces/:traceId/events', adminAgentsController.events);
 router.get('/events', adminAgentsController.events);
 router.get('/runs/:runId', adminAgentsController.run);
 router.get('/metrics', adminAgentsController.metrics);
+router.get('/integrity', adminAgentsController.integrity);
+router.post('/integrity/reconcile/:traceId', adminAgentsController.reconcile);
 
 module.exports = router;

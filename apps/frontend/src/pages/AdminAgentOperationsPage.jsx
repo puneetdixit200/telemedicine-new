@@ -13,20 +13,25 @@ const phaseLabel = (phase) => ({ planning: 'AI', policy: 'Policy', execution: 'E
 const shortId = (value) => value ? `${value.slice(0, 8)}…` : '—';
 const agentLabel = (value) => value === 'no_show_recovery' ? 'No-Show Recovery' : 'Post-Visit Follow-Up';
 
-function stageState(events, phase) {
+const TERMINAL_TRACE_STATUSES = new Set(['completed', 'partially_completed', 'failed', 'deduplicated', 'cancelled']);
+const TERMINAL_EVENT_TYPES = new Set(['dedupe_hit', 'dedupe_miss', 'existing_run_returned', 'ai_response_received', 'ai_request_completed', 'ai_request_failed', 'deterministic_fallback_activated', 'json_parse_completed', 'json_parse_failed', 'response_schema_validation_passed', 'response_schema_validation_failed', 'medication_fidelity_check_passed', 'medication_fidelity_check_failed', 'agent_actions_created', 'awaiting_approval', 'approval_requested', 'action_rejected', 'action_completed', 'action_failed', 'patient_message_queued', 'notification_dismissed', 'refill_reminder_scheduled', 'refill_reminder_skipped', 'run_completed', 'run_partially_completed', 'run_failed', 'trace_completed']);
+
+function stageState(events, phase, traceStatus) {
   const found = events.filter((event) => event.phase === phase);
   if (found.some((event) => event.status === 'failed')) return 'failed';
-  if (found.some((event) => event.status === 'started') && !found.some((event) => event.status === 'completed' || event.status === 'skipped')) return 'active';
-  if (found.some((event) => ['completed', 'skipped', 'info'].includes(event.status))) return 'completed';
+  if (found.some((event) => event.status === 'skipped')) return 'skipped';
+  if (found.some((event) => TERMINAL_EVENT_TYPES.has(event.eventType) || event.status === 'completed')) return 'completed';
+  if (found.some((event) => event.status === 'started')) return TERMINAL_TRACE_STATUSES.has(traceStatus) ? 'inconsistent' : 'active';
   return 'not-started';
 }
 
-function Stage({ phase, label, events }) {
-  const state = stageState(events, phase);
-  const duration = events.filter((event) => event.phase === phase && event.durationMs).at(-1)?.durationMs;
-  return <div className={`agent-stage ${state}`} aria-label={`${label}: ${state}`}>
+function Stage({ phase, label, events, presentation, replay, traceStatus }) {
+  const derived = presentation?.pipeline?.[phase];
+  const state = replay ? stageState(events, phase, traceStatus) : derived?.state || stageState(events, phase, traceStatus);
+  const duration = replay ? events.filter((event) => event.phase === phase && event.durationMs).at(-1)?.durationMs : derived?.durationMs;
+  return <div className={`agent-stage ${state.replaceAll('_', '-')}`} aria-label={`${label}: ${state}`}>
     <span className="agent-stage-marker" aria-hidden="true">{state === 'completed' ? '✓' : state === 'failed' ? '!' : state === 'active' ? '•' : '○'}</span>
-    <strong>{label}</strong><small>{state.replace('-', ' ')}{duration ? ` · ${duration} ms` : ''}</small>
+    <strong>{label}</strong><small>{state.replaceAll('_', ' ')}{derived?.reason ? ` · ${derived.reason}` : ''}{duration ? ` · ${duration} ms` : ''}</small>
   </div>;
 }
 
@@ -71,7 +76,7 @@ export default function AdminAgentOperationsPage({ user }) {
       const eventsResponse = await apiRequest(`/api/admin/agents/events?after=${encodeURIComponent(lastCursor.current)}`);
       if (eventsResponse.ok && eventsResponse.data.events?.length) {
         const latest = eventsResponse.data.events.at(-1);
-        lastCursor.current = latest.createdAt;
+        lastCursor.current = eventsResponse.data.nextCursor || `${new Date(latest.createdAt).toISOString()}|${latest.id}`;
         if (selectedIdRef.current) {
           const current = await apiRequest(`/api/admin/agents/traces/${selectedIdRef.current}`);
           if (current.ok) setDetail(current.data.trace);
@@ -90,7 +95,7 @@ export default function AdminAgentOperationsPage({ user }) {
       if (!cancelled && response.ok) {
         setDetail(response.data.trace);
         const latest = response.data.trace.events?.at(-1);
-        if (latest) lastCursor.current = latest.createdAt;
+        if (latest) lastCursor.current = `${new Date(latest.createdAt).toISOString()}|${latest.id}`;
       }
     });
     return () => { cancelled = true; };
@@ -203,8 +208,8 @@ export default function AdminAgentOperationsPage({ user }) {
     <div className="agent-ops-layout">
       <aside className="agent-run-list card"><div className="agent-panel-heading"><h2>Runs</h2><select value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Filter traces"><option value="all">All</option><option value="active">Active</option><option value="awaiting_approval">Awaiting approval</option><option value="executing">Executing</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="real-ai">Real AI</option><option value="fallback">Fallback</option></select></div>{filteredTraces.length ? filteredTraces.map((trace) => <button type="button" className={`agent-run-card ${trace.id === selectedId ? 'selected' : ''}`} key={trace.id} onClick={() => { setSelectedId(trace.id); setReplay(false); }}><span className="agent-run-card-top"><strong>{agentLabel(trace.agentType)}</strong><span className={`agent-status ${trace.status}`}>{trace.status.replaceAll('_', ' ')}</span></span><span>Trace {shortId(trace.id)} · Appt {shortId(trace.appointmentId)}</span><span>{trace.run?.plan?.model || 'Provider pending'} · {trace.run?.plan?.fallbackUsed ? 'Deterministic fallback' : trace.run?.plan ? 'Real AI' : 'Planning'}</span><small>{utcDateTime(trace.updatedAt)}</small></button>) : <p className="muted">No persisted traces yet. Trigger an agent to begin.</p>}</aside>
       <main className="agent-ops-main">{selected ? <>
-        <article className="card agent-selected-summary"><div><p className="kicker">{replay ? 'Historical replay' : 'Selected trace'}</p><h2>{agentLabel(selected.agentType)}</h2><p className="muted">Trace {presentation ? masked(selected.id) : selected.id} · Run {presentation ? masked(selected.run?.id) : selected.run?.id || 'not linked yet'}</p></div><div className="agent-selected-badges"><span className={`agent-status ${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><span>{selected.run?.plan?.model || 'Model pending'}</span><span>{selected.run?.plan?.fallbackUsed ? 'Fallback used' : selected.run?.plan ? 'Real AI' : 'Awaiting plan'}</span></div></article>
-        <article className="card"><div className="agent-panel-heading"><h2>Live workflow pipeline</h2><span className="muted">Stages are driven by persisted backend events</span></div><div className="agent-pipeline">{STAGES.map(([phase, label]) => <Stage key={phase} phase={phase} label={label} events={replayEvents}/>)}</div></article>
+        <article className="card agent-selected-summary"><div><p className="kicker">{replay ? 'Historical replay' : 'Selected trace'}</p><h2>{agentLabel(selected.agentType)}</h2><p className="muted">Trace {presentation ? masked(selected.id) : selected.id} · Run {presentation ? masked(selected.run?.id) : selected.run?.id || (selected.status === 'deduplicated' ? 'existing run reused' : 'not linked yet')}</p></div><div className="agent-selected-badges"><span className={`agent-status ${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><span>{selected.presentation?.outcome === 'existing_run_reused' ? 'Existing run reused' : selected.run?.plan?.model || (selected.presentation?.isTerminal ? 'No model call' : 'Model pending')}</span><span>{selected.run?.plan?.fallbackUsed ? 'Fallback used' : selected.run?.plan ? 'Real AI' : selected.status === 'awaiting_approval' ? 'Human approval required' : selected.presentation?.outcome === 'existing_run_reused' ? 'No duplicate AI request' : '—'}</span></div></article>
+        <article className="card"><div className="agent-panel-heading"><h2>Live workflow pipeline</h2><span className="muted">Stages are driven by persisted backend state and events</span></div><div className="agent-pipeline">{STAGES.map(([phase, label]) => <Stage key={phase} phase={phase} label={label} events={replayEvents} presentation={selected.presentation} replay={replay} traceStatus={replay ? null : selected.status}/>)}</div></article>
         <div className="agent-ops-two-column"><article className="card"><div className="agent-panel-heading"><h2>Action branches</h2><span className="muted">Approval-gated server tools</span></div>{selected.run?.actions?.length ? selected.run.actions.map((action) => <div className="agent-action-branch" key={action.id}><div><strong>{action.title}</strong><span>{action.toolName} · {action.riskLevel} risk</span></div><span className={`agent-status ${action.status}`}>{action.status}</span><small>Approver: {action.approvedById ? shortId(action.approvedById) : 'pending'}{action.result?.reason ? ` · ${action.result.reason}` : ''}</small></div>) : <p className="muted">Actions appear after plan persistence.</p>}</article><article className="card"><div className="agent-panel-heading"><h2>Operational console</h2><button type="button" onClick={() => { setReplay(!replay); setReplayIndex(null); }}>{replay ? 'Stop replay' : 'Replay audit timeline'}</button></div><div className="agent-console">{replayEvents.slice(-12).map((event) => <div key={event.id}>[{phaseLabel(event.phase).toUpperCase()}] {event.title}{event.durationMs ? ` · ${event.durationMs}ms` : ''}</div>)}</div></article></div>
         <article className="card"><div className="agent-panel-heading"><h2>Activity timeline</h2><select value={eventFilter} onChange={(event) => setEventFilter(event.target.value)} aria-label="Filter activity events"><option value="all">All events</option>{['trigger','context','policy','deduplication','planning','validation','persistence','approval','execution','notification','completion'].map((phase) => <option key={phase} value={phase}>{phaseLabel(phase)}</option>)}</select></div><div className="agent-timeline">{visibleEvents.map((event) => <div className={`agent-event ${event.status}`} key={event.id}><time>{new Date(event.createdAt).toLocaleTimeString('en-IN', { hour12: false })}</time><span className="agent-event-phase">{phaseLabel(event.phase)}</span><div><strong>{event.title}</strong><p>{event.message || event.eventType}{event.durationMs ? ` · ${event.durationMs} ms` : ''}</p></div></div>)}</div></article>
         <article className="card agent-inspector"><h2>Run inspector</h2><div className="agent-inspector-grid"><div><span>Appointment status</span><strong>{selected.appointment?.status || '—'}</strong></div><div><span>Trigger</span><strong>{selected.run?.triggeredBy || 'request'}</strong></div><div><span>Actor</span><strong>{selected.actor?.role || '—'}</strong></div><div><span>Context</span><strong>{selected.run?.context ? 'Loaded (sanitized)' : 'Pending'}</strong></div><div><span>Patient result</span><strong>{selected.run?.actions?.some((action) => action.result?.messageId) ? 'Queued' : 'Pending'}</strong></div><div><span>Safety</span><strong>{events.some((event) => event.eventType === 'medication_fidelity_check_failed') ? 'Failed' : 'Server validated'}</strong></div></div><details><summary>AI-generated draft requiring human approval</summary><pre>{JSON.stringify(selected.run?.plan || {}, null, 2)}</pre></details><details><summary>Sanitized raw JSON</summary><pre>{JSON.stringify({ trace: selected, events: selected.events }, null, 2)}</pre></details></article>

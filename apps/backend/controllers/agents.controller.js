@@ -42,6 +42,7 @@ async function beginTrace(req, agentType) {
       requestedById: req.user.id,
       requestId: req.requestId
     });
+    await safeRecordAgentEvent({ traceId: trace.traceId, phase: 'trigger', eventType: 'trace_created', status: 'completed', title: 'Execution trace created' });
     await safeRecordAgentEvent({ traceId: trace.traceId, phase: 'trigger', eventType: 'request_received', status: 'info', title: 'Agent request received', metadata: { agentType, status: 'accepted' } });
     await safeRecordAgentEvent({ traceId: trace.traceId, phase: 'trigger', eventType: 'actor_identified', status: 'completed', title: 'Authorized actor identified', metadata: { status: req.user.role } });
     await safeRecordAgentEvent({ traceId: trace.traceId, phase: 'trigger', eventType: 'agent_type_selected', status: 'completed', title: 'Agent type selected', metadata: { status: agentType } });
@@ -65,6 +66,7 @@ const agentsController = {
       });
       return res.json({ ok: true, run });
     } catch (error) {
+      await safeRecordAgentEvent({ traceId: trace?.traceId, phase: 'policy', eventType: error.code === 'INVALID_AGENT_STATE' ? 'appointment_state_rejected' : error.code === 'PRESCRIPTION_REQUIRED' ? 'prescription_missing' : 'policy_validation_failed', status: 'failed', title: error.message || 'Agent request failed', metadata: { errorCode: error.code || 'AGENT_WORKFLOW_FAILED' } });
       await failAgentTrace(trace?.traceId, error).catch(() => {});
       return sendError(res, error);
     }
@@ -82,6 +84,7 @@ const agentsController = {
       });
       return res.json({ ok: true, run });
     } catch (error) {
+      await safeRecordAgentEvent({ traceId: trace?.traceId, phase: 'policy', eventType: error.code === 'INVALID_AGENT_STATE' ? 'appointment_state_rejected' : error.code === 'PRESCRIPTION_REQUIRED' ? 'prescription_missing' : 'policy_validation_failed', status: 'failed', title: error.message || 'Agent request failed', metadata: { errorCode: error.code || 'AGENT_WORKFLOW_FAILED' } });
       await failAgentTrace(trace?.traceId, error).catch(() => {});
       return sendError(res, error);
     }

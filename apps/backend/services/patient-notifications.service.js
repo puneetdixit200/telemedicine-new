@@ -46,7 +46,7 @@ async function listPatientNotifications(patientId) {
   return Promise.all(visible.map(async (message) => {
     const metadata = metadataObject(message.metadata);
     const trace = metadata.agentRunId
-      ? await prisma.agentExecutionTrace.findUnique({ where: { runId: metadata.agentRunId }, select: { id: true, runId: true } })
+      ? await prisma.agentExecutionTrace.findFirst({ where: { runId: metadata.agentRunId, status: { not: 'deduplicated' } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, runId: true } })
       : null;
     if (trace) {
       const existing = await prisma.agentExecutionEvent.findFirst({
@@ -97,7 +97,7 @@ async function dismissPatientNotification({ patientId, messageId }) {
 
   const metadata = metadataObject(message.metadata);
   if (metadata.agentRunId) {
-    const trace = await prisma.agentExecutionTrace.findUnique({ where: { runId: metadata.agentRunId }, select: { id: true, runId: true } });
+    const trace = await prisma.agentExecutionTrace.findFirst({ where: { runId: metadata.agentRunId, status: { not: 'deduplicated' } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, runId: true } });
     if (trace) {
       await safeRecordAgentEvent({ traceId: trace.id, runId: trace.runId, phase: 'notification', eventType: 'notification_dismissed', status: 'completed', title: 'Notification dismissed by patient', metadata: { messageId: message.id } });
     }

@@ -3,7 +3,7 @@ jest.mock('../apps/backend/models/db', () => ({
 }));
 
 const { prisma } = require('../apps/backend/models/db');
-const { sanitizeAgentEventMetadata, recordAgentEvent, withAgentPhase } = require('../apps/backend/services/agent-observability.service');
+const { sanitizeAgentEventMetadata, recordAgentEvent, withAgentPhase, safeObservabilityOperation } = require('../apps/backend/services/agent-observability.service');
 
 describe('agent observability safety', () => {
   afterEach(() => jest.clearAllMocks());
@@ -25,5 +25,9 @@ describe('agent observability safety', () => {
     prisma.agentExecutionEvent.create.mockResolvedValue({ id: 'event-2' });
     await recordAgentEvent({ traceId: 'trace-1', phase: 'planning', eventType: 'ai_response_received', status: 'completed', title: 'Response received', metadata: { provider: 'openrouter', authorization: 'Bearer secret' } });
     expect(prisma.agentExecutionEvent.create.mock.calls[0][0].data.metadata).toEqual({ provider: 'openrouter' });
+  });
+
+  it('does not fail the workflow when an observability operation fails', async () => {
+    await expect(safeObservabilityOperation(async () => { throw new Error('telemetry unavailable'); }, { operation: 'test_write', traceId: 'trace-1' })).resolves.toBeNull();
   });
 });
