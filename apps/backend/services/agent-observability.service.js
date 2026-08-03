@@ -8,6 +8,8 @@ const SAFE_METADATA_KEYS = new Set([
   'medicineCount', 'hasFollowUpDate', 'priorNoShowCount', 'actionId', 'toolName', 'riskLevel',
   'approvedById', 'approvalTimestamp', 'scheduled', 'messageId', 'reminderId', 'dedupeKey',
   'validationCategory', 'status'
+  , 'languageCode', 'languageName', 'languageScript', 'languageDirection', 'languageSource', 'languageFallbackUsed',
+  'generationSource', 'messageDraftId', 'contentHash', 'stepSequence'
 ]);
 
 function safeScalar(value) {

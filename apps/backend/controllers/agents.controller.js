@@ -64,7 +64,7 @@ const agentsController = {
         input,
         traceContext: trace
       });
-      return res.json({ ok: true, run });
+      return res.json({ ok: true, run, traceId: trace?.traceId || null });
     } catch (error) {
       await safeRecordAgentEvent({ traceId: trace?.traceId, phase: 'policy', eventType: error.code === 'INVALID_AGENT_STATE' ? 'appointment_state_rejected' : error.code === 'PRESCRIPTION_REQUIRED' ? 'prescription_missing' : 'policy_validation_failed', status: 'failed', title: error.message || 'Agent request failed', metadata: { errorCode: error.code || 'AGENT_WORKFLOW_FAILED' } });
       await failAgentTrace(trace?.traceId, error).catch(() => {});

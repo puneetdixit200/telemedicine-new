@@ -25,7 +25,12 @@ async function queueExternalMessage({ action, actor, metadataType }) {
     throw new Error('Patient phone is missing, so an external message cannot be queued.');
   }
 
+  const existing = await prisma.externalConsultMessage.findUnique({ where: { agentActionId: action.id } }).catch(() => null);
+  if (existing) return { threadId: existing.threadId, messageId: existing.id, deliveryStatus: existing.deliveryStatus || 'queued', deduplicated: true };
+
   return prisma.$transaction(async (tx) => {
+    const race = await tx.externalConsultMessage.findUnique({ where: { agentActionId: action.id } }).catch(() => null);
+    if (race) return { threadId: race.threadId, messageId: race.id, deliveryStatus: race.deliveryStatus || 'queued', deduplicated: true };
     const thread = await tx.externalConsultThread.upsert({
       where: { appointmentId },
       update: {
@@ -45,11 +50,15 @@ async function queueExternalMessage({ action, actor, metadataType }) {
         threadId: thread.id,
         direction: 'outbound',
         body,
+        title: clean(action.arguments?.title) || null,
+        agentActionId: action.id,
+        messageDraftId: clean(action.arguments?.metadata?.messageDraftId) || null,
         syncedById: actor.id,
         deliveryStatus: 'queued',
         metadata: {
           ...(action.arguments?.metadata || {}),
           type: metadataType,
+          notificationTitle: clean(action.arguments?.title) || null,
           agentRunId: action.runId,
           agentActionId: action.id
         }

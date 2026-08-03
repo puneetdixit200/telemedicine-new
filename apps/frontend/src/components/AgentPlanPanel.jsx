@@ -9,7 +9,7 @@ function actionDone(action) {
   return ['completed', 'failed', 'rejected', 'skipped'].includes(action.status);
 }
 
-export default function AgentPlanPanel({ appointment, agentType = 'no-show' }) {
+export default function AgentPlanPanel({ appointment, agentType = 'no-show', user }) {
   const [run, setRun] = useState(null);
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState('');
@@ -34,6 +34,7 @@ export default function AgentPlanPanel({ appointment, agentType = 'no-show' }) {
   const proposedActions = (run?.actions || []).filter((action) => action.status === 'proposed');
   const approvedActions = (run?.actions || []).filter((action) => action.status === 'approved');
   const executableCount = approvedActions.length;
+  const adminApproval = agentType !== 'no-show' || user?.role === 'admin';
 
   const setRunAndSelection = (nextRun) => {
     setRun(nextRun);
@@ -76,6 +77,11 @@ export default function AgentPlanPanel({ appointment, agentType = 'no-show' }) {
     await postRunAction(`/api/agents/runs/${run.id}/execute`, {}, 'execute');
   };
 
+  const approveAndRun = async () => {
+    if (!run?.id || selected.length === 0) return;
+    await postRunAction(`/api/admin/agents/runs/${run.id}/approve-and-run`, { actionIds: selected }, 'approve-run');
+  };
+
   const toggleAction = (actionId) => {
     setSelected((prev) => (prev.includes(actionId) ? prev.filter((id) => id !== actionId) : [...prev, actionId]));
   };
@@ -101,6 +107,8 @@ export default function AgentPlanPanel({ appointment, agentType = 'no-show' }) {
             <span className="agent-plan-status">{statusLabel(run.status)}</span>
             <p>{run.summary || run.plan?.summary}</p>
             {run.plan?.patientMessage ? <blockquote>{run.plan.patientMessage}</blockquote> : null}
+            {run.plan?.notificationTitle ? <p><strong>Patient notification title:</strong> {run.plan.notificationTitle}</p> : null}
+            {run.plan?.languageName ? <p className="muted">Patient language: {run.plan.languageName} ({run.plan.languageCode}) · {run.plan.languageSource || 'profile'}{run.plan.languageFallbackUsed ? ' · Hindi fallback' : ''}</p> : null}
             {run.plan?.patientFriendlySummary ? <blockquote>{run.plan.patientFriendlySummary}</blockquote> : null}
             {run.plan?.fallbackUsed ? <p className="muted">Deterministic fallback was used for this draft.</p> : null}
             {run.plan?.model ? <p className="muted">Planner: {run.plan.model}</p> : null}
@@ -142,15 +150,17 @@ export default function AgentPlanPanel({ appointment, agentType = 'no-show' }) {
           </div>
 
           <div className="agent-plan-controls">
-            <button type="button" onClick={approveSelected} disabled={Boolean(busy) || selected.length === 0 || proposedActions.length === 0}>
-              {busy === 'approve' ? 'Approving...' : 'Approve selected'}
-            </button>
-            <button type="button" className="ghost" onClick={rejectSelected} disabled={Boolean(busy) || selected.length === 0}>
-              Reject
-            </button>
-            <button type="button" onClick={executeApproved} disabled={Boolean(busy) || executableCount === 0}>
-              {busy === 'execute' ? 'Executing...' : 'Execute approved'}
-            </button>
+            {adminApproval ? <>
+              {agentType === 'no-show' ? (
+                <button type="button" onClick={approveAndRun} disabled={Boolean(busy) || selected.length === 0 || proposedActions.length === 0}>
+                  {busy === 'approve-run' ? 'Approving and running...' : 'Approve and Run'}
+                </button>
+              ) : <button type="button" onClick={approveSelected} disabled={Boolean(busy) || selected.length === 0 || proposedActions.length === 0}>
+                {busy === 'approve' ? 'Approving...' : 'Approve selected'}
+              </button>}
+              <button type="button" className="ghost" onClick={rejectSelected} disabled={Boolean(busy) || selected.length === 0}>Reject</button>
+              {agentType !== 'no-show' ? <button type="button" onClick={executeApproved} disabled={Boolean(busy) || executableCount === 0}>{busy === 'execute' ? 'Executing...' : 'Execute approved'}</button> : null}
+            </> : <p className="muted">Only an administrator can approve or execute this no-show action. The patient has not been notified.</p>}
           </div>
         </div>
       ) : (

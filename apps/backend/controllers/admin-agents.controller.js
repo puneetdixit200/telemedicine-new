@@ -2,11 +2,12 @@ const { prisma } = require('../models/db');
 const { createSupabaseExpressClient, getSupabaseAnonKey, getSupabaseUrl } = require('../services/supabase-auth.service');
 const { derivePipelineState, validateTraceInvariants, validateRunInvariants } = require('../services/agent-state-machine.service');
 const { findInconsistentAgentStates, reconcileTrace } = require('../services/agent-state-reconciliation.service');
+const { approveAndRunAgent } = require('../services/agent-orchestrator.service');
 
 const TRACE_INCLUDE = {
   appointment: { select: { id: true, status: true, doctorId: true, patientId: true, startAt: true } },
   requestedBy: { select: { id: true, role: true, fullName: true } },
-  run: { include: { actions: { orderBy: { createdAt: 'asc' } } } },
+  run: { include: { actions: { orderBy: { createdAt: 'asc' } }, messageDrafts: { orderBy: [{ version: 'desc' }] }, executionSteps: { orderBy: [{ sequence: 'asc' }] } } },
   events: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }
 };
 
@@ -16,7 +17,7 @@ function initials(name) {
 
 function safePlan(plan) {
   if (!plan || typeof plan !== 'object') return null;
-  const allowed = ['summary', 'patientMessage', 'patientFriendlySummary', 'medicationExplanation', 'nextSteps', 'warningSigns', 'rationale', 'safetyNotes', 'model', 'provider', 'fallbackUsed', 'aiMetadata'];
+  const allowed = ['summary', 'patientMessage', 'notificationTitle', 'patientFriendlySummary', 'medicationExplanation', 'nextSteps', 'warningSigns', 'rationale', 'safetyNotes', 'model', 'provider', 'fallbackUsed', 'generationSource', 'languageCode', 'languageName', 'languageNativeName', 'languageScript', 'languageDirection', 'languageSource', 'languageFallbackUsed', 'aiMetadata'];
   return Object.fromEntries(allowed.filter((key) => plan[key] !== undefined).map((key) => [key, plan[key]]));
 }
 
@@ -29,7 +30,8 @@ function safeContext(context) {
     availableSlotCount: Array.isArray(context.availableSlots) ? context.availableSlots.length : null,
     priorNoShowCount: Number.isFinite(context.priorNoShowCount) ? context.priorNoShowCount : null,
     medicineCount: Array.isArray(prescription.medicines) ? prescription.medicines.length : null,
-    hasFollowUpDate: Boolean(prescription.followUpDate)
+    hasFollowUpDate: Boolean(prescription.followUpDate),
+    patientLanguage: context.patientLanguage ? { code: context.patientLanguage.code, name: context.patientLanguage.name, script: context.patientLanguage.script, direction: context.patientLanguage.direction, source: context.patientLanguage.source, fallbackUsed: context.patientLanguage.fallbackUsed } : null
   };
 }
 
@@ -39,7 +41,7 @@ function safeAction(action) {
     id: action.id, actionKey: action.actionKey, toolName: action.toolName, title: action.title,
     description: action.description, riskLevel: action.riskLevel, requiresApproval: action.requiresApproval,
     status: action.status, approvedById: action.approvedById, approvedAt: action.approvedAt,
-    executedAt: action.executedAt, result: action.result || null, error: action.error || null,
+    executedAt: action.executedAt, messageDraftId: action.messageDraftId || null, approvedContentHash: action.approvedContentHash || null, result: action.result || null, error: action.error || null,
     createdAt: action.createdAt, updatedAt: action.updatedAt
   };
 }
@@ -67,7 +69,9 @@ function safeTrace(trace) {
       id: run.id, agentType: run.agentType, status: run.status, dedupeKey: run.dedupeKey,
       triggeredBy: run.triggeredBy, summary: run.summary, plan: safePlan(run.plan), context: safeContext(run.context),
       startedAt: run.startedAt, completedAt: run.completedAt, createdAt: run.createdAt,
-      actions: actions.map(safeAction)
+      actions: actions.map(safeAction),
+      messageDrafts: (run.messageDrafts || []).map((draft) => ({ id: draft.id, version: draft.version, status: draft.status, languageCode: draft.languageCode, languageName: draft.languageName, languageScript: draft.languageScript, languageDirection: draft.languageDirection, languageSource: draft.languageSource, languageFallbackUsed: draft.languageFallbackUsed, notificationTitle: draft.notificationTitle, notificationBody: draft.notificationBody, generationSource: draft.generationSource, contentHash: String(draft.contentHash || '').slice(0, 12), approvedById: draft.approvedById, approvedAt: draft.approvedAt, deliveredAt: draft.deliveredAt })),
+      executionSteps: (run.executionSteps || []).map((step) => ({ id: step.id, sequence: step.sequence, stepKey: step.stepKey, title: step.title, status: step.status, startedAt: step.startedAt, completedAt: step.completedAt, durationMs: step.durationMs, errorCode: step.errorCode }))
     } : null,
     events: (trace.events || []).map(safeEvent),
     presentation: {
@@ -165,6 +169,14 @@ const adminAgentsController = {
     const trace = await prisma.agentExecutionTrace.findFirst({ where: { runId: req.params.runId, status: { not: 'deduplicated' } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], include: TRACE_INCLUDE });
     if (!trace) return res.status(404).json({ ok: false, code: 'AGENT_RUN_NOT_FOUND', error: 'Agent run not found.' });
     return res.json({ ok: true, trace: safeTrace(trace) });
+  },
+  approveAndRun: async (req, res) => {
+    try {
+      const run = await approveAndRunAgent({ runId: req.params.runId, actor: req.user, actionIds: Array.isArray(req.body?.actionIds) ? req.body.actionIds : [] });
+      return res.status(200).json({ ok: true, run });
+    } catch (error) {
+      return res.status(Number(error.status || 500)).json({ ok: false, code: error.code || 'AGENT_WORKFLOW_FAILED', error: error.message || 'Agent workflow failed.', ...(error.run ? { run: error.run } : {}) });
+    }
   },
   metrics: async (req, res) => res.json({ ok: true, range: req.query.range || '24h', ...(await overview()) }),
   integrity: async (_req, res) => {

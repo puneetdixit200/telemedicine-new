@@ -5,8 +5,9 @@ export default function PatientNotificationBanner({ notifications, minimized, on
   const primary = notifications[0];
   if (!primary) return null;
 
+  const direction = primary.metadata?.languageDirection === 'rtl' ? 'rtl' : 'ltr';
   return (
-    <aside className={`patient-notification-banner ${minimized ? 'minimized' : ''}`} aria-live="polite">
+    <aside className={`patient-notification-banner ${minimized ? 'minimized' : ''}`} aria-live="polite" dir={direction}>
       <button type="button" className="patient-notification-toggle" onClick={onMinimize}>
         <span className="material-symbols-outlined" aria-hidden="true">
           {minimized ? 'notifications_active' : 'expand_more'}
@@ -20,7 +21,7 @@ export default function PatientNotificationBanner({ notifications, minimized, on
             <span className="material-symbols-outlined" aria-hidden="true">notifications_active</span>
           </div>
           <div>
-            <strong>Care update from your clinic</strong>
+            <strong>{primary.title || primary.metadata?.notificationTitle || 'Care update from your clinic'}</strong>
             <p>{primary.body}</p>
             <div className="patient-notification-actions">
               {primary.appointmentId ? <Link to={`/appointments/${primary.appointmentId}`}>Open appointment</Link> : null}
