@@ -190,7 +190,7 @@ const adminAgentsController = {
   },
   approveAndRun: async (req, res) => {
     try {
-      const run = await approveAndRunAgent({ runId: req.params.runId, actor: req.user, actionIds: Array.isArray(req.body?.actionIds) ? req.body.actionIds : [] });
+      const run = await approveAndRunAgent({ runId: req.params.runId, actor: req.user, actionIds: Array.isArray(req.body?.actionIds) ? req.body.actionIds : [], executionMode: req.body?.executionMode || 'live' });
       return res.status(200).json({ ok: true, run });
     } catch (error) {
       return res.status(Number(error.status || 500)).json({ ok: false, code: error.code || 'AGENT_WORKFLOW_FAILED', error: error.message || 'Agent workflow failed.', ...(error.run ? { run: error.run } : {}) });
