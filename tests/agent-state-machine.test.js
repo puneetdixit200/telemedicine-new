@@ -5,7 +5,8 @@ const {
   transitionActionStatus,
   validateTraceInvariants,
   validateRunInvariants,
-  validateActionInvariants
+  validateActionInvariants,
+  isHistoricalUnresolvedTrace
 } = require('../apps/backend/services/agent-state-machine.service');
 
 const event = (eventType, phase, status, id) => ({ id, eventType, phase, status, createdAt: `2026-08-03T00:00:0${id}.000Z` });
@@ -42,5 +43,10 @@ describe('agent state machine', () => {
     expect(validateTraceInvariants({ status: 'deduplicated', completedAt: null, runId: null, events: [] })).toEqual(expect.arrayContaining(['terminal_trace_missing_completedAt', 'deduplicated_trace_missing_run', 'deduplicated_trace_missing_dedupe_hit']));
     expect(validateRunInvariants({ status: 'completed', completedAt: null, actions: [{ status: 'approved' }] })).toEqual(expect.arrayContaining(['completed_run_has_unfinished_actions', 'terminal_run_missing_completedAt']));
     expect(validateActionInvariants({ status: 'approved', approvedAt: null, approvedById: null })).toContain('approved_action_missing_approval_audit');
+  });
+
+  it('classifies a legacy deduplicated trace without inventing a source trace', () => {
+    expect(isHistoricalUnresolvedTrace({ status: 'deduplicated', sourceTraceId: null, createdAt: '2026-08-03T00:00:00.000Z' }, { createdAt: '2026-08-02T00:00:00.000Z' })).toBe(true);
+    expect(validateTraceInvariants({ status: 'deduplicated', completedAt: new Date(), runId: 'run-1', sourceTraceId: null, createdAt: '2026-08-03T00:00:00.000Z' }, { createdAt: '2026-08-02T00:00:00.000Z' }, [{ eventType: 'dedupe_hit' }])).not.toContain('deduplicated_trace_missing_source_trace');
   });
 });

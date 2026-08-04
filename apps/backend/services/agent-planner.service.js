@@ -182,53 +182,86 @@ function postVisitActions(context, plan) {
 
 async function planNoShowRecovery(context, input = {}) {
   const fallback = buildNoShowFallback(context);
-  try {
-    const language = context.patientLanguage || resolvePatientLanguage(context.patient);
-    const promptContext = {
-      patientDisplayName: context.patient?.fullName || 'Patient',
-      doctorName: context.doctor?.fullName || 'Doctor',
-      targetLanguageCode: language.code,
-      targetLanguageName: language.name,
-      targetLanguageNativeName: language.nativeName,
-      targetScript: language.script,
-      targetDirection: language.direction,
-      appointmentStatus: context.appointment.status,
-      availableSlotLabels: fallback.availableSlotLabels,
-      quickRebookPath: context.quickRebookPath,
-      priorNoShowCount: context.priorNoShowCount
-    };
-    const text = await aiGenerate({
-      systemPrompt:
-        'You are a care-coordination drafting assistant inside a telemedicine workflow. Return one valid JSON object with exactly these keys: adminSummary (string), notificationTitle (string), patientMessage (string), rationale (array of strings), safetyNotes (array of strings). Write notificationTitle and patientMessage entirely in the requested target language and preferred native script. Do not write patient-facing fields in English unless the target language is English. Names, URLs, immutable identifiers and exact date/time values may remain unchanged. Do not mix English headings into non-English patient-facing text. Do not diagnose, recommend treatment, or claim a slot has been booked. Ask the patient to confirm an offered time or use the exact rebooking link. Return valid JSON.',
-      userPrompt: JSON.stringify(promptContext),
-      temperature: 0.2,
-      maxTokens: 700
-    });
+  const language = context.patientLanguage || resolvePatientLanguage(context.patient);
+  const promptContext = {
+    patientDisplayName: context.patient?.fullName || 'Patient',
+    doctorName: context.doctor?.fullName || 'Doctor',
+    targetLanguageCode: language.code,
+    targetLanguageName: language.name,
+    targetLanguageNativeName: language.nativeName,
+    targetScript: language.script,
+    targetDirection: language.direction,
+    appointmentStatus: context.appointment.status,
+    availableSlotLabels: fallback.availableSlotLabels,
+    quickRebookPath: context.quickRebookPath,
+    priorNoShowCount: context.priorNoShowCount
+  };
+  const baseSystemPrompt = 'You are a care-coordination drafting assistant inside a telemedicine workflow. Return one valid JSON object with exactly these keys: adminSummary (string), notificationTitle (string), patientMessage (string), rationale (array of strings), safetyNotes (array of strings). Write notificationTitle and patientMessage entirely in the requested target language and preferred native script. Do not write patient-facing fields in English unless the target language is English. Names, URLs, immutable identifiers and exact date/time values may remain unchanged. Do not mix English headings into non-English patient-facing text. Do not diagnose, recommend treatment, or claim a slot has been booked. Ask the patient to confirm an offered time or use the exact rebooking link. Return valid JSON.';
+  const failureCategory = (error) => {
+    if (!error) return 'invalid_schema';
+    if (error.status === 504) return 'PROVIDER_TIMEOUT';
+    if (error.status === 502) return 'PROVIDER_HTTP_ERROR';
+    if (error.status === 503) return 'PROVIDER_UNAVAILABLE';
+    if (error.code === 'LOCALIZED_WRONG_SCRIPT') return 'wrong_language_or_script';
+    if (error.code === 'LOCALIZED_REBOOK_URL_CHANGED') return 'rebooking_url_changed';
+    if (error.code === 'LOCALIZED_SLOT_CHANGED') return 'slot_labels_changed';
+    if (error.code === 'LOCALIZED_OUTPUT_EMPTY') return 'missing_required_fields';
+    if (error.code === 'LOCALIZED_UNSAFE_CONTENT') return 'unsafe_content';
+    return error.code || 'invalid_schema';
+  };
+  const buildPrompt = (correction) => correction
+    ? `${baseSystemPrompt} Your previous response failed validation for: ${correction}. Return one corrected JSON object only. Preserve the supplied rebooking URL and slot labels exactly.`
+    : baseSystemPrompt;
+  const buildUserPrompt = (correction) => JSON.stringify(correction ? { ...promptContext, validationFailure: correction } : promptContext);
+  const parseAndValidate = (text) => {
     const parsed = tryParseJson(text);
-    console.log('[agent-planner] no-show model response shape', {
-      model: getAiModel(),
-      responseLength: String(text || '').length,
-      keys: parsed && typeof parsed === 'object' ? Object.keys(parsed) : []
-    });
-    if (!parsed || !clean(parsed.patientMessage) || !clean(parsed.notificationTitle) || !clean(parsed.adminSummary || parsed.summary)) throw new Error('Invalid model plan.');
+    console.log('[agent-planner] no-show model response shape', { model: getAiModel(), responseLength: String(text || '').length, keys: parsed && typeof parsed === 'object' ? Object.keys(parsed) : [] });
+    if (!parsed) {
+      const error = new Error('Invalid model JSON.');
+      error.code = 'INVALID_JSON';
+      throw error;
+    }
+    if (!clean(parsed.patientMessage) || !clean(parsed.notificationTitle) || !clean(parsed.adminSummary || parsed.summary)) {
+      const error = new Error('Invalid model plan.');
+      error.code = 'INVALID_MODEL_SCHEMA';
+      throw error;
+    }
     const plan = {
       ...fallback,
       summary: clean(parsed.adminSummary || parsed.summary, fallback.summary).slice(0, 1000),
       notificationTitle: clean(parsed.notificationTitle, fallback.notificationTitle).slice(0, 240),
       patientMessage: clean(parsed.patientMessage, fallback.patientMessage).slice(0, 1600),
       rationale: Array.isArray(parsed.rationale) ? parsed.rationale.map((item) => clean(item)).filter(Boolean).slice(0, 5) : fallback.rationale,
-      safetyNotes: Array.isArray(parsed.safetyNotes)
-        ? parsed.safetyNotes.map((item) => clean(item)).filter(Boolean).slice(0, 5)
-        : fallback.safetyNotes,
+      safetyNotes: Array.isArray(parsed.safetyNotes) ? parsed.safetyNotes.map((item) => clean(item)).filter(Boolean).slice(0, 5) : fallback.safetyNotes,
       fallbackUsed: false,
       model: getAiModel(),
-      provider: 'openrouter'
+      provider: 'openrouter',
+      generationSource: 'openrouter'
     };
     validateLocalizedAgentDraft({ draft: plan, language, quickRebookPath: context.quickRebookPath, availableSlotLabels: fallback.availableSlotLabels, immutableTokens: [patientNameToken(context.patient), doctorNameToken(context.doctor)] });
-    return { plan, actions: noShowActions(context, plan) };
-  } catch (error) {
-    return { plan: { ...fallback, error: clean(error.message).slice(0, 300), validationFailure: error.code || null }, actions: noShowActions(context, fallback) };
+    return plan;
+  };
+
+  let firstFailure = null;
+  let firstAttemptValid = false;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const text = await aiGenerate({ systemPrompt: buildPrompt(firstFailure && failureCategory(firstFailure)), userPrompt: buildUserPrompt(firstFailure && failureCategory(firstFailure)), temperature: 0.2, maxTokens: 700 });
+      const plan = parseAndValidate(text);
+      firstAttemptValid = attempt === 1;
+      plan.aiMetadata = { attemptCount: attempt, firstAttemptValid, correctiveRetryUsed: attempt === 2, finalGenerationSource: 'openrouter', fallbackUsed: false, validationFailureCategory: firstFailure ? failureCategory(firstFailure) : null };
+      return { plan, actions: noShowActions(context, plan) };
+    } catch (error) {
+      if (attempt === 1 && error && ![503, 502, 504].includes(error.status)) {
+        firstFailure = error;
+        continue;
+      }
+      const category = failureCategory(firstFailure || error);
+      const plan = { ...fallback, error: clean(error.message).slice(0, 300), validationFailure: category, aiMetadata: { attemptCount: attempt, firstAttemptValid: false, correctiveRetryUsed: attempt === 2, finalGenerationSource: 'deterministic_localized_template', fallbackUsed: true, validationFailureCategory: category } };
+      return { plan, actions: noShowActions(context, plan) };
+    }
   }
+  return { plan: { ...fallback, aiMetadata: { attemptCount: 2, firstAttemptValid: false, correctiveRetryUsed: true, finalGenerationSource: 'deterministic_localized_template', fallbackUsed: true, validationFailureCategory: 'invalid_schema' } }, actions: noShowActions(context, fallback) };
 }
 
 function patientNameToken(patient) { return clean(patient?.fullName); }

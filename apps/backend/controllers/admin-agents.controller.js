@@ -1,6 +1,6 @@
 const { prisma } = require('../models/db');
 const { createSupabaseExpressClient, getSupabaseAnonKey, getSupabaseUrl } = require('../services/supabase-auth.service');
-const { derivePipelineState, validateTraceInvariants, validateRunInvariants } = require('../services/agent-state-machine.service');
+const { derivePipelineState, validateTraceInvariants, validateRunInvariants, isHistoricalUnresolvedTrace } = require('../services/agent-state-machine.service');
 const { findInconsistentAgentStates, reconcileTrace } = require('../services/agent-state-reconciliation.service');
 const { approveAndRunAgent } = require('../services/agent-orchestrator.service');
 
@@ -56,6 +56,8 @@ function safeEvent(event) {
 
 function safeTrace(trace) {
   const run = trace.run;
+  const historicalUnresolved = isHistoricalUnresolvedTrace(trace, run);
+  const invariantErrors = [...validateTraceInvariants(trace, run, trace.events), ...validateRunInvariants(run)].filter((error) => !(historicalUnresolved && error === 'deduplicated_trace_missing_source_trace'));
   const actions = run?.actions || [];
   return {
     id: trace.id, correlationId: trace.correlationId, requestId: trace.requestId, traceKind: trace.traceKind, sourceTraceId: trace.sourceTraceId, agentType: trace.agentType,
@@ -67,13 +69,14 @@ function safeTrace(trace) {
     patient: trace.appointment?.patientId ? { id: trace.appointment.patientId, display: 'Patient' } : null,
     run: run ? {
       id: run.id, agentType: run.agentType, status: run.status, dedupeKey: run.dedupeKey,
-      triggeredBy: run.triggeredBy, summary: run.summary, plan: safePlan(run.plan), context: safeContext(run.context),
+      triggeredBy: run.triggeredBy, executionMode: run.input?.executionMode || 'live', summary: run.summary, plan: safePlan(run.plan), context: safeContext(run.context),
       startedAt: run.startedAt, completedAt: run.completedAt, createdAt: run.createdAt,
       actions: actions.map(safeAction),
       messageDrafts: (run.messageDrafts || []).map((draft) => ({ id: draft.id, version: draft.version, status: draft.status, languageCode: draft.languageCode, languageName: draft.languageName, languageScript: draft.languageScript, languageDirection: draft.languageDirection, languageSource: draft.languageSource, languageFallbackUsed: draft.languageFallbackUsed, notificationTitle: draft.notificationTitle, notificationBody: draft.notificationBody, generationSource: draft.generationSource, contentHash: String(draft.contentHash || '').slice(0, 12), approvedById: draft.approvedById, approvedAt: draft.approvedAt, deliveredAt: draft.deliveredAt })),
       executionSteps: (run.executionSteps || []).map((step) => ({ id: step.id, sequence: step.sequence, stepKey: step.stepKey, title: step.title, status: step.status, startedAt: step.startedAt, completedAt: step.completedAt, durationMs: step.durationMs, errorCode: step.errorCode }))
     } : null,
     events: (trace.events || []).map(safeEvent),
+    integrity: historicalUnresolved ? { status: 'historical_unresolved', message: 'Original trace relationship was not recorded by the historical deployment.', requiresOperationalAction: false } : { status: invariantErrors.length ? 'inconsistent' : 'healthy', message: null, requiresOperationalAction: Boolean(invariantErrors.length) },
     presentation: {
       traceStatus: trace.status,
       outcome: trace.status === 'deduplicated' ? 'existing_run_reused' : trace.status,
@@ -84,7 +87,8 @@ function safeTrace(trace) {
       model: run?.plan?.model || null,
       fallbackUsed: run?.plan?.fallbackUsed ?? null,
       pipeline: derivePipelineState({ trace, run, actions, events: trace.events || [] }),
-      invariantErrors: [...validateTraceInvariants(trace, run, trace.events || []), ...validateRunInvariants(run)]
+      integrityStatus: historicalUnresolved ? 'historical_unresolved' : invariantErrors.length ? 'inconsistent' : 'healthy',
+      invariantErrors
     }
   };
 }
@@ -126,6 +130,11 @@ async function overview() {
   const runs = traces.map((trace) => trace.run).filter(Boolean);
   const aiRuns = runs.filter((run) => run.plan && run.plan.fallbackUsed === false);
   const fallbackRuns = runs.filter((run) => run.plan && run.plan.fallbackUsed === true);
+  const planningMetadata = runs.map((run) => run.plan?.aiMetadata).filter(Boolean);
+  const firstAttemptSuccesses = planningMetadata.filter((meta) => meta.firstAttemptValid === true).length;
+  const correctiveRetries = planningMetadata.filter((meta) => meta.correctiveRetryUsed === true);
+  const retrySuccesses = correctiveRetries.filter((meta) => meta.fallbackUsed === false).length;
+  const failureCount = (category) => planningMetadata.filter((meta) => meta.validationFailureCategory === category).length;
   const durations = runs.map((run) => new Date(run.completedAt || 0).getTime() - new Date(run.startedAt || 0).getTime()).filter((value) => value > 0);
   return {
     activeRuns: traces.filter((trace) => ['active', 'awaiting_approval', 'executing'].includes(trace.status)).length,
@@ -133,6 +142,15 @@ async function overview() {
     failedToday: count('failed'), partiallyCompletedToday: count('partially_completed'),
     realAiSuccessRate: runs.length ? Math.round((aiRuns.length / runs.length) * 100) : 0,
     fallbackRate: runs.length ? Math.round((fallbackRuns.length / runs.length) * 100) : 0,
+    planningRequests: runs.length,
+    firstAttemptAiSuccessCount: firstAttemptSuccesses,
+    correctiveRetryCount: correctiveRetries.length,
+    correctiveRetrySuccessCount: retrySuccesses,
+    localizedFallbackCount: planningMetadata.filter((meta) => meta.finalGenerationSource === 'deterministic_localized_template').length,
+    invalidJsonCount: failureCount('INVALID_JSON'),
+    wrongLanguageCount: failureCount('wrong_language_or_script'),
+    providerTimeoutCount: failureCount('PROVIDER_TIMEOUT'),
+    providerHttpFailureCount: failureCount('PROVIDER_HTTP_ERROR'),
     averageTotalRunDurationMs: durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0,
     recentFailures: traces.filter((trace) => trace.status === 'failed').slice(-5).map((trace) => ({ id: trace.id, errorCode: trace.errorCode, errorMessage: trace.errorMessage }))
   };
