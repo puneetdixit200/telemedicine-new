@@ -157,4 +157,31 @@ describe('agent planner deterministic safety', () => {
     expect(result.plan).toMatchObject({ fallbackUsed: true, model: 'deterministic-fallback' });
     expect(result.plan.error).toBe('provider unavailable');
   });
+
+  it('uses one corrective retry for invalid JSON before accepting a localized draft', async () => {
+    aiGenerate
+      .mockResolvedValueOnce('not json')
+      .mockResolvedValueOnce(JSON.stringify({
+        adminSummary: 'Corrected draft.',
+        notificationTitle: 'Missed appointment follow-up',
+        patientMessage: 'Please confirm a new consultation time. Rebook here: /book?doctorId=doc-1',
+        rationale: [],
+        safetyNotes: []
+      }));
+    const result = await planNoShowRecovery({
+      appointment: { id: 'appt-1', status: 'no_show' }, patient: { fullName: 'Asha', language: 'English' }, doctor: { fullName: 'Ravi' }, availableSlots: [], quickRebookPath: '/book?doctorId=doc-1', priorNoShowCount: 0
+    });
+    expect(aiGenerate).toHaveBeenCalledTimes(2);
+    expect(result.plan).toMatchObject({ fallbackUsed: false, generationSource: 'openrouter', aiMetadata: { attemptCount: 2, firstAttemptValid: false, correctiveRetryUsed: true, finalGenerationSource: 'openrouter' } });
+  });
+
+  it('uses a localized fallback after one invalid corrective retry', async () => {
+    aiGenerate.mockResolvedValueOnce('not json').mockResolvedValueOnce('{}');
+    const result = await planNoShowRecovery({
+      appointment: { id: 'appt-1', status: 'no_show' }, patient: { fullName: 'Asha', language: 'Tamil' }, doctor: { fullName: 'Ravi' }, availableSlots: [], quickRebookPath: '/book?doctorId=doc-1', priorNoShowCount: 0
+    });
+    expect(aiGenerate).toHaveBeenCalledTimes(2);
+    expect(result.plan).toMatchObject({ fallbackUsed: true, model: 'deterministic-fallback', generationSource: 'deterministic_localized_template', languageCode: 'ta', aiMetadata: { attemptCount: 2, correctiveRetryUsed: true, finalGenerationSource: 'deterministic_localized_template', fallbackUsed: true, validationFailureCategory: 'INVALID_JSON' } });
+    expect(result.plan.patientMessage).toMatch(/தமிழ்|வணக்கம்|மீண்டும்/);
+  });
 });

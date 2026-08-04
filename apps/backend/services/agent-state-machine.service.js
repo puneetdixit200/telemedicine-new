@@ -155,6 +155,9 @@ const transitionActionStatus = ({ from, to }) => transitionStatus('action', from
 const isTerminalTraceStatus = (status) => TRACE_TERMINAL.has(status);
 const isTerminalRunStatus = (status) => RUN_TERMINAL.has(status);
 const isTerminalActionStatus = (status) => ACTION_TERMINAL.has(status);
+function isHistoricalUnresolvedTrace(trace, run = trace?.run) {
+  return trace?.status === 'deduplicated' && !trace.sourceTraceId && Boolean(run?.createdAt && trace.createdAt && new Date(run.createdAt) < new Date(trace.createdAt));
+}
 
 function validateTraceInvariants(trace, run = trace?.run, events = trace?.events || []) {
   const errors = [];
@@ -162,7 +165,7 @@ function validateTraceInvariants(trace, run = trace?.run, events = trace?.events
   if (trace?.status === 'deduplicated') {
     if (!trace.runId) errors.push('deduplicated_trace_missing_run');
     if (trace.traceKind && trace.traceKind !== 'deduplicated_request') errors.push('deduplicated_trace_kind_mismatch');
-    if (trace.runId && !trace.sourceTraceId) errors.push('deduplicated_trace_missing_source_trace');
+    if (trace.runId && !trace.sourceTraceId && !isHistoricalUnresolvedTrace(trace, run)) errors.push('deduplicated_trace_missing_source_trace');
     if (!events.some((event) => event.eventType === 'dedupe_hit')) errors.push('deduplicated_trace_missing_dedupe_hit');
     if (events.some((event) => ['ai_request_started', 'ai_response_received', 'agent_run_created'].includes(event.eventType))) errors.push('deduplicated_trace_has_execution_events');
   }
@@ -239,6 +242,7 @@ module.exports = {
   isTerminalTraceStatus,
   isTerminalRunStatus,
   isTerminalActionStatus,
+  isHistoricalUnresolvedTrace,
   validateTraceInvariants,
   validateRunInvariants,
   validateActionInvariants,

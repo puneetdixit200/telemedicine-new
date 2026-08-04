@@ -14,7 +14,7 @@ describe('patient language and localized no-show drafts', () => {
   });
 
   test.each([
-    [null, 'hi'], ['', 'hi'], ['not-a-language', 'hi'], ['Tamil', 'ta'], ['ta-IN', 'ta'], ['தமிழ்', 'ta'], ['Urdu', 'ur'], ['Oriya', 'or'], ['Meitei', 'mni']
+    [null, 'hi'], ['', 'hi'], ['   ', 'hi'], ['not-a-language', 'hi'], ['fr-FR', 'hi'], ['Tamil', 'ta'], ['ta-IN', 'ta'], ['தமிழ்', 'ta'], ['Urdu', 'ur'], ['Oriya', 'or'], ['Meitei', 'mni']
   ])('%s resolves to %s', (value, expected) => {
     expect(resolvePatientLanguage({ language: value }).code).toBe(expected);
   });

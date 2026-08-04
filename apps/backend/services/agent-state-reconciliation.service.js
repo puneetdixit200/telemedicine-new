@@ -6,7 +6,8 @@ const {
   isTerminalRunStatus,
   validateTraceInvariants,
   validateRunInvariants,
-  validateActionInvariants
+  validateActionInvariants,
+  isHistoricalUnresolvedTrace
 } = require('./agent-state-machine.service');
 
 const TRACE_INCLUDE = {
@@ -41,11 +42,13 @@ async function loadTrace(traceId) {
 
 function inspectTrace(trace) {
   const run = trace?.run;
+  const historicalUnresolved = isHistoricalUnresolvedTrace(trace, run);
+  const invariantErrors = validateTraceInvariants(trace, run, trace.events).filter((error) => !(historicalUnresolved && error === 'deduplicated_trace_missing_source_trace'));
   return {
     traceId: trace.id,
     traceStatus: trace.status,
     runId: trace.runId,
-    invariantErrors: validateTraceInvariants(trace, run, trace.events),
+    invariantErrors,
     runInvariantErrors: run ? validateRunInvariants(run) : [],
     actionInvariantErrors: (run?.actions || []).flatMap((action) => validateActionInvariants(action).map((error) => ({ actionId: action.id, error }))),
     unmatchedPhases: phaseIssues(trace.events),
@@ -60,6 +63,7 @@ async function findInconsistentAgentStates() {
     activeBeyondThreshold: inspected.filter((row) => row.stale),
     terminalMissingCompletedAt: inspected.filter((row) => isTerminalTraceStatus(row.traceStatus) && row.invariantErrors.includes('terminal_trace_missing_completedAt')),
     deduplicatedMissingRun: inspected.filter((row) => row.traceStatus === 'deduplicated' && row.invariantErrors.includes('deduplicated_trace_missing_run')),
+    historicalUnresolved: inspected.filter((row) => isHistoricalUnresolvedTrace(traces.find((trace) => trace.id === row.traceId), traces.find((trace) => trace.id === row.traceId)?.run)),
     completedRunsWithUnfinishedActions: inspected.filter((row) => row.runInvariantErrors.includes('completed_run_has_unfinished_actions')),
     executingActionsBeyondThreshold: traces.flatMap((trace) => (trace.run?.actions || []).filter((action) => action.status === 'executing' && Date.now() - new Date(action.updatedAt).getTime() > 15 * 60 * 1000).map((action) => ({ traceId: trace.id, runId: trace.runId, actionId: action.id }))),
     unmatchedPhaseStarts: inspected.filter((row) => row.unmatchedPhases.length),
@@ -80,7 +84,7 @@ async function reconcileTrace(traceId, { dryRun = false } = {}) {
       repairs.push({ type: 'link_reused_run', runId, sourceTraceId: original?.id || null });
     }
   }
-  if (trace.status === 'deduplicated' && trace.runId && (trace.traceKind !== 'deduplicated_request' || !trace.sourceTraceId)) {
+  if (trace.status === 'deduplicated' && trace.runId && !isHistoricalUnresolvedTrace(trace, trace.run) && (trace.traceKind !== 'deduplicated_request' || !trace.sourceTraceId)) {
     const original = await prisma.agentExecutionTrace.findFirst({ where: { runId: trace.runId, id: { not: trace.id }, status: { not: 'deduplicated' } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true } });
     repairs.push({ type: 'classify_deduplicated_trace', sourceTraceId: trace.sourceTraceId || original?.id || null });
   }

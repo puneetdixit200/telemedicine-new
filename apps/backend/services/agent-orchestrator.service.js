@@ -334,8 +334,8 @@ const NO_SHOW_EXECUTION_STEPS = [
   ['delivery_gate_completed', 'Final delivery gate completed']
 ];
 
-function pacingConfig() {
-  const mode = process.env.AGENT_EXECUTION_PACING_MODE === 'presentation_paced' ? 'presentation_paced' : 'live';
+function pacingConfig(modeOverride) {
+  const mode = modeOverride === 'presentation_paced' || (!modeOverride && process.env.AGENT_EXECUTION_PACING_MODE === 'presentation_paced') ? 'presentation_paced' : 'live';
   const min = Math.min(Math.max(Number(process.env.AGENT_STAGE_MIN_VISIBLE_MS || 800), 0), 1400);
   const max = Math.min(Math.max(Number(process.env.AGENT_STAGE_MAX_VISIBLE_MS || 1400), min), 2000);
   const total = Math.min(Math.max(Number(process.env.AGENT_TOTAL_PACING_LIMIT_MS || 10000), 0), 15000);
@@ -372,7 +372,7 @@ async function runNoShowStep({ runId, traceId, actionId, sequence, stepKey, titl
   }
 }
 
-async function executeNoShowPacedAction({ action, actor, trace }) {
+async function executeNoShowPacedAction({ action, actor, trace, executionMode }) {
   const runId = action.runId;
   const draft = await prisma.agentMessageDraft.findFirst({ where: { runId, status: { in: ['approved', 'delivered'] } }, orderBy: { version: 'desc' } });
   if (!draft) throw Object.assign(new Error('Approved localized draft is required before delivery.'), { code: 'AGENT_DRAFT_REQUIRED', status: 409 });
@@ -383,7 +383,7 @@ async function executeNoShowPacedAction({ action, actor, trace }) {
   const currentHash = crypto.createHash('sha256').update(`${draft.notificationTitle}\n${draft.notificationBody}`).digest('hex');
   if (currentHash !== draft.contentHash || currentHash !== action.approvedContentHash) throw Object.assign(new Error('The approved draft changed and requires reapproval.'), { code: 'AGENT_DRAFT_CHANGED_REAPPROVAL_REQUIRED', status: 409 });
   if (currentLanguage.code !== draft.languageCode) throw Object.assign(new Error('The patient language changed and requires reapproval.'), { code: 'AGENT_LANGUAGE_CHANGED_REAPPROVAL_REQUIRED', status: 409 });
-  const pacing = pacingConfig();
+  const pacing = pacingConfig(executionMode || action.run?.input?.executionMode);
   const context = { runId, traceId: trace?.id, actionId: action.id, pacing };
   await runNoShowStep({ ...context, sequence: 1, stepKey: NO_SHOW_EXECUTION_STEPS[0][0], title: NO_SHOW_EXECUTION_STEPS[0][1], operation: async () => null });
   await runNoShowStep({ ...context, sequence: 2, stepKey: NO_SHOW_EXECUTION_STEPS[1][0], title: NO_SHOW_EXECUTION_STEPS[1][1], operation: async () => null });
@@ -406,7 +406,7 @@ async function executeNoShowPacedAction({ action, actor, trace }) {
   return result;
 }
 
-async function executeApprovedActions({ runId, actor }) {
+async function executeApprovedActions({ runId, actor, executionMode }) {
   const run = await findRunById(runId);
   assertCanApproveAgentRun(actor, run);
   const trace = await findTraceByRunId(runId);
@@ -462,7 +462,7 @@ async function executeApprovedActions({ runId, actor }) {
 
     try {
       const result = action.agentType === 'no_show_recovery' || run.agentType === 'no_show_recovery'
-        ? await executeNoShowPacedAction({ action: executingAction, actor, trace })
+        ? await executeNoShowPacedAction({ action: executingAction, actor, trace, executionMode: executionMode || executingAction.run.input?.executionMode })
         : await executeAllowedTool({ action: executingAction, actor });
       const actionResultStatus = action.toolName === 'schedule_refill_reminder' && result?.scheduled === false ? 'skipped' : 'completed';
       await prisma.agentAction.update({
@@ -498,9 +498,11 @@ async function executeApprovedActions({ runId, actor }) {
   return result;
 }
 
-async function approveAndRunAgent({ runId, actor, actionIds }) {
+async function approveAndRunAgent({ runId, actor, actionIds, executionMode = 'live' }) {
   const run = await findRunById(runId);
   if (!run) throw Object.assign(new Error('Agent run not found.'), { status: 404, code: 'AGENT_RUN_NOT_FOUND' });
+  if (!['live', 'presentation_paced'].includes(executionMode)) throw Object.assign(new Error('Unsupported execution mode.'), { status: 400, code: 'AGENT_EXECUTION_MODE_INVALID' });
+  if (executionMode === 'presentation_paced' && actor?.role !== 'admin') throw Object.assign(new Error('Presentation mode requires administrator access.'), { status: 403, code: 'AGENT_ADMIN_REQUIRED' });
   if (run.agentType === 'no_show_recovery' && actor?.role !== 'admin') {
     assertCanApproveAgentRun(actor, run);
   }
@@ -509,9 +511,10 @@ async function approveAndRunAgent({ runId, actor, actionIds }) {
     const error = Object.assign(new Error('Agent execution is already in progress.'), { status: 202, code: 'AGENT_EXECUTION_IN_PROGRESS', run: publicRun(run) });
     throw error;
   }
+  await prisma.agentRun.update({ where: { id: runId }, data: { input: { ...(run.input || {}), executionMode } } });
   const proposed = run.actions.filter((action) => action.status === 'proposed').map((action) => action.id);
   await approveAgentActions({ runId, actionIds: actionIds?.length ? actionIds : proposed, actor });
-  return executeApprovedActions({ runId, actor });
+  return executeApprovedActions({ runId, actor, executionMode });
 }
 
 module.exports = {
