@@ -14,9 +14,13 @@ function readText(relativePath) {
 describe('Next.js Supabase migration guard', () => {
   it('uses Next.js as the primary app runtime while preserving legacy scripts', () => {
     const pkg = readJson('package.json');
+    const buildGuard = readText('scripts/vercel-build.js');
 
     expect(pkg.scripts.dev).toContain('next dev');
-    expect(pkg.scripts.build).toBe('next build');
+    expect(pkg.scripts.build).toBe('node scripts/vercel-build.js');
+    expect(pkg.scripts['build:next']).toBe('next build');
+    expect(buildGuard).toContain("prisma', 'migrate', 'deploy");
+    expect(buildGuard).toContain("next', 'build");
     expect(pkg.scripts.start).toContain('server-next.js');
     expect(pkg.scripts['dev:custom']).toContain('server-next.js');
     expect(pkg.scripts['legacy:dev']).toBe('nodemon app.js');

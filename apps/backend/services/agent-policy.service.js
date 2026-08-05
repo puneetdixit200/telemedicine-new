@@ -14,6 +14,10 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+function hasRecordedNoShowOccurrence(appointment) {
+  return Boolean(appointment?.noShowOccurrenceId) && Number(appointment?.noShowVersion || 0) > 0;
+}
+
 function assertCanManageAppointment(user, appointment) {
   if (!user) throw policyError('Authentication required.', 401, 'UNAUTHORIZED');
   if (!appointment) throw policyError('Appointment not found.', 404, 'APPOINTMENT_NOT_FOUND');
@@ -26,8 +30,16 @@ function assertCanManageAppointment(user, appointment) {
 
 function assertCanGenerateNoShowPlan(user, appointment) {
   assertCanManageAppointment(user, appointment);
-  if (!['booked', 'no_show'].includes(appointment.status)) {
-    throw policyError('No-show recovery can only be planned for booked or no-show appointments.', 409, 'INVALID_AGENT_STATE');
+
+  const isDirectlyEligible = ['booked', 'no_show'].includes(appointment.status);
+  const isClosedRecordedNoShow = appointment.status === 'completed' && hasRecordedNoShowOccurrence(appointment);
+
+  if (!isDirectlyEligible && !isClosedRecordedNoShow) {
+    throw policyError(
+      'No-show recovery requires a booked appointment, a no-show appointment, or a completed appointment with a recorded no-show occurrence.',
+      409,
+      'INVALID_AGENT_STATE'
+    );
   }
 }
 
