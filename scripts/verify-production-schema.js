@@ -34,7 +34,16 @@ async function main() {
     WHERE t.typname = 'AgentRunStatus'
   `);
 
+  const triggers = await prisma.$queryRawUnsafe(`
+    SELECT trigger_name
+    FROM information_schema.triggers
+    WHERE event_object_schema = 'public'
+      AND event_object_table = 'AgentRun'
+      AND trigger_name = 'AgentRun_enforce_approval_window'
+  `);
+
   const statusNames = new Set(statuses.map((row) => row.enumlabel));
+  const triggerNames = new Set(triggers.map((row) => row.trigger_name));
   const missing = [];
 
   if (requiredColumns.size) {
@@ -45,13 +54,17 @@ async function main() {
     missing.push('AgentRunStatus value: queued_for_start');
   }
 
+  if (!triggerNames.has('AgentRun_enforce_approval_window')) {
+    missing.push('AgentRun trigger: AgentRun_enforce_approval_window');
+  }
+
   if (missing.length) {
     throw new Error(
       `Production schema is not compatible with this deployment. Missing ${missing.join('; ')}.`
     );
   }
 
-  console.log('[schema-check] Agent workflow schema is compatible.');
+  console.log('[schema-check] Agent workflow schema and approval timing guard are compatible.');
 }
 
 main()
