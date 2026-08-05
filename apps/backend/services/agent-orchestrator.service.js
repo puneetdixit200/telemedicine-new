@@ -120,7 +120,15 @@ async function createRunWithActions({ agentType, appointmentId, actor, input, co
   return run;
 }
 
-async function createNoShowRecoveryPlan({ appointmentId, actor, input = {}, traceContext }) {
+async function planReservedNoShowRun({ appointmentId, actor, input = {}, traceContext, reservedRun: existingReservedRun = null }) {
+  let reservedRun = existingReservedRun;
+  let dedupeKey = existingReservedRun?.dedupeKey || null;
+  if (reservedRun) {
+    if (reservedRun.status !== 'planned') {
+      throw Object.assign(new Error('No-show workflow is not ready to start.'), { status: 409, code: 'AGENT_WORKFLOW_NOT_STARTABLE' });
+    }
+  }
+  if (!reservedRun) {
   const currentAppointment = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { status: true, noShowOccurrenceId: true } });
   if (currentAppointment?.status === 'booked') {
     const occurrenceId = crypto.randomUUID();
@@ -131,7 +139,7 @@ async function createNoShowRecoveryPlan({ appointmentId, actor, input = {}, trac
   assertCanGenerateNoShowPlan(actor, occurrenceAppointment);
   const occurrenceId = occurrenceAppointment.noShowOccurrenceId || crypto.randomUUID();
   if (!occurrenceAppointment.noShowOccurrenceId) await prisma.appointment.update({ where: { id: appointmentId }, data: { noShowOccurrenceId: occurrenceId } });
-  const dedupeKey = `no_show_recovery:${appointmentId}:${occurrenceId}`;
+  dedupeKey = `no_show_recovery:${appointmentId}:${occurrenceId}`;
   await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'deduplication', eventType: 'dedupe_check_started', status: 'started', title: 'Checking for duplicate run', metadata: { dedupeKey } });
   const existingBeforeContext = await prisma.agentRun.findUnique({ where: { dedupeKey }, include: RUN_INCLUDE });
   if (existingBeforeContext) {
@@ -141,7 +149,8 @@ async function createNoShowRecoveryPlan({ appointmentId, actor, input = {}, trac
   await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'deduplication', eventType: 'dedupe_miss', status: 'completed', title: 'No duplicate run found' });
   const reserved = await reserveNoShowRun({ appointmentId, actor, input, context: { appointment: occurrenceAppointment }, dedupeKey, traceContext });
   if (!reserved.created) return publicRun(reserved.run);
-  const reservedRun = reserved.run;
+  reservedRun = reserved.run;
+  }
   const contextStartedAt = Date.now();
   await safeRecordAgentEvent({ traceId: traceContext?.traceId, phase: 'context', eventType: 'context_loading_started', status: 'started', title: 'Loading trusted appointment context' });
   const context = await loadNoShowContext(appointmentId);
@@ -172,6 +181,7 @@ async function createNoShowRecoveryPlan({ appointmentId, actor, input = {}, trac
   const contentHash = crypto.createHash('sha256').update(`${plan.notificationTitle}\n${plan.patientMessage}`).digest('hex');
   const draft = await prisma.agentMessageDraft.create({ data: { runId: reservedRun.id, version: 1, status: 'draft', languageCode: language.code, languageName: language.name, languageScript: language.script, languageDirection: language.direction, languageSource: language.source, languageFallbackUsed: language.fallbackUsed, notificationTitle: plan.notificationTitle, notificationBody: plan.patientMessage, generationSource: plan.generationSource || (plan.fallbackUsed ? 'deterministic_localized_template' : 'openrouter'), contentHash } });
   const action = plannerResult.actions[0];
+  transitionRunStatus({ from: reservedRun.status, to: 'awaiting_approval' });
   const run = await prisma.$transaction(async (tx) => {
     await tx.agentRun.update({ where: { id: reservedRun.id }, data: { status: 'awaiting_approval', plan, summary: plan.summary || null } });
     await tx.agentAction.create({ data: { runId: reservedRun.id, actionKey: action.actionKey, toolName: action.toolName, title: action.title, description: action.description || null, arguments: { ...action.arguments, title: plan.notificationTitle, body: plan.patientMessage, metadata: { ...(action.arguments.metadata || {}), messageDraftId: draft.id, contentHash } }, riskLevel: action.riskLevel || 'high', requiresApproval: true, status: 'proposed', idempotencyKey: `${dedupeKey}:${action.toolName}:v1`, messageDraftId: draft.id } });
@@ -184,14 +194,104 @@ async function createNoShowRecoveryPlan({ appointmentId, actor, input = {}, trac
   return publicRun(run);
 }
 
-async function reserveNoShowRun({ appointmentId, actor, input, context, dedupeKey, traceContext }) {
+const NO_SHOW_PRESENTATION_STAGES = [
+  ['trigger', 'Triggered'],
+  ['context', 'Context loaded'],
+  ['policy', 'Policy validated'],
+  ['deduplication', 'Deduplication checked'],
+  ['planning', 'AI model called'],
+  ['validation', 'Output validated'],
+  ['persistence', 'Plan saved'],
+  ['approval', 'Awaiting approval'],
+  ['execution', 'Actions executing'],
+  ['notification', 'Patient result'],
+  ['completion', 'Completed']
+];
+
+async function initializeNoShowPresentationSteps(runId, traceId) {
+  await prisma.agentExecutionStep.createMany({
+    data: NO_SHOW_PRESENTATION_STAGES.map(([stepKey, title], index) => ({
+      runId,
+      traceId,
+      sequence: index + 1,
+      stepKey,
+      title,
+      status: 'pending',
+      metadata: { presentationOnly: true, minimumVisibleMs: 5000 }
+    })),
+    skipDuplicates: true
+  });
+}
+
+async function createNoShowTicket({ appointmentId, actor, input = {}, traceContext }) {
+  const current = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { id: true, status: true, doctorId: true, patientId: true, noShowOccurrenceId: true } });
+  if (current?.status === 'booked') {
+    const occurrenceId = crypto.randomUUID();
+    const transitioned = await prisma.appointment.updateMany({ where: { id: appointmentId, status: 'booked' }, data: { status: 'no_show', noShowVersion: { increment: 1 }, noShowOccurrenceId: occurrenceId } });
+    if (transitioned.count === 1) await cancelScheduledRemindersForAppointment(appointmentId).catch(() => {});
+  }
+  const appointment = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { id: true, status: true, doctorId: true, patientId: true, noShowOccurrenceId: true } });
+  assertCanGenerateNoShowPlan(actor, appointment);
+  const occurrenceId = appointment.noShowOccurrenceId || crypto.randomUUID();
+  if (!appointment.noShowOccurrenceId) await prisma.appointment.update({ where: { id: appointmentId }, data: { noShowOccurrenceId: occurrenceId } });
+  const dedupeKey = `no_show_recovery:${appointmentId}:${occurrenceId}`;
+  const existing = await prisma.agentRun.findUnique({ where: { dedupeKey }, include: RUN_INCLUDE });
+  if (existing) {
+    await markDeduplicatedTrace(traceContext, existing);
+    return publicRun(existing);
+  }
+  const reserved = await reserveNoShowRun({ appointmentId, actor, input, context: null, dedupeKey, traceContext, status: 'queued_for_start' });
+  if (!reserved.created) return publicRun(reserved.run);
+  await initializeNoShowPresentationSteps(reserved.run.id, traceContext?.traceId);
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: reserved.run.id, phase: 'system', eventType: 'no_show_ticket_created', status: 'completed', title: 'No-show recovery ticket created' });
+  await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: reserved.run.id, phase: 'system', eventType: 'ticket_waiting_for_admin_start', status: 'info', title: 'Waiting for administrator to start workflow' });
+  return publicRun(reserved.run);
+}
+
+async function startNoShowWorkflow({ runId, actor }) {
+  if (actor?.role !== 'admin') throw Object.assign(new Error('Administrator access is required to start this workflow.'), { status: 403, code: 'AGENT_ADMIN_REQUIRED' });
+  const run = await findRunById(runId);
+  if (!run || run.agentType !== 'no_show_recovery') throw Object.assign(new Error('No-show workflow ticket not found.'), { status: 404, code: 'AGENT_RUN_NOT_FOUND' });
+  if (run.status !== 'queued_for_start') {
+    if (['planned', 'awaiting_approval', 'executing', 'completed'].includes(run.status)) return publicRun(run);
+    throw Object.assign(new Error('This workflow ticket cannot be started.'), { status: 409, code: 'AGENT_WORKFLOW_NOT_STARTABLE' });
+  }
+  transitionRunStatus({ from: 'queued_for_start', to: 'planned' });
+  const claimed = await prisma.agentRun.updateMany({ where: { id: runId, status: 'queued_for_start' }, data: { status: 'planned', workflowStartedAt: new Date(), workflowStartedById: actor.id } });
+  if (claimed.count !== 1) {
+    const latest = await findRunById(runId);
+    const error = Object.assign(new Error('Workflow start is already in progress.'), { status: 202, code: 'AGENT_WORKFLOW_START_IN_PROGRESS', run: publicRun(latest) });
+    throw error;
+  }
+  const started = await findRunById(runId);
+  const trace = await findTraceByRunId(runId);
+  await safeRecordAgentEvent({ traceId: trace?.id, runId, phase: 'system', eventType: 'admin_workflow_start_requested', status: 'info', title: 'Administrator requested workflow start', metadata: { startedById: actor.id } });
+  await safeRecordAgentEvent({ traceId: trace?.id, runId, phase: 'trigger', eventType: 'admin_workflow_started', status: 'completed', title: 'Administrator started no-show workflow' });
+  await safeObservabilityOperation(() => updateTrace(trace?.id, { status: 'active' }), { operation: 'mark_trace_started', traceId: trace?.id, runId });
+  try {
+    const result = await planReservedNoShowRun({ appointmentId: started.appointmentId, actor: started.requestedById ? { ...actor, id: started.requestedById } : actor, input: started.input || {}, traceContext: { traceId: trace?.id }, reservedRun: started });
+    const approvalAvailableAt = new Date(Date.now() + 5000);
+    const updated = await prisma.agentRun.update({ where: { id: runId }, data: { approvalAvailableAt }, include: RUN_INCLUDE });
+    return publicRun(updated || result);
+  } catch (error) {
+    await prisma.agentRun.update({ where: { id: runId }, data: { status: 'failed', error: String(error.message || error).slice(0, 2000), completedAt: new Date() } });
+    await failAgentTrace(trace?.id, error).catch(() => {});
+    throw error;
+  }
+}
+
+async function createNoShowRecoveryPlan(args) {
+  return createNoShowTicket(args);
+}
+
+async function reserveNoShowRun({ appointmentId, actor, input, context, dedupeKey, traceContext, status = 'planned' }) {
   const existing = await prisma.agentRun.findUnique({ where: { dedupeKey }, include: RUN_INCLUDE });
   if (existing) {
     await markDeduplicatedTrace(traceContext, existing);
     return { run: existing, created: false };
   }
   try {
-    const run = await prisma.agentRun.create({ data: { agentType: 'no_show_recovery', status: 'planned', dedupeKey, appointmentId, requestedById: actor.id, triggeredBy: 'manual', input: input || {}, context }, include: RUN_INCLUDE });
+    const run = await prisma.agentRun.create({ data: { agentType: 'no_show_recovery', status, dedupeKey, appointmentId, requestedById: actor.id, triggeredBy: 'manual', input: input || {}, context }, include: RUN_INCLUDE });
     await safeObservabilityOperation(() => linkTraceToRun(traceContext?.traceId, run.id), { operation: 'link_reserved_run', traceId: traceContext?.traceId, runId: run.id });
     await safeRecordAgentEvent({ traceId: traceContext?.traceId, runId: run.id, phase: 'persistence', eventType: 'agent_run_created', status: 'completed', title: 'Agent run reserved before AI planning' });
     return { run, created: true };
@@ -277,6 +377,13 @@ async function approveAgentActions({ runId, actionIds, actor }) {
 async function rejectAgentActions({ runId, actionIds, actor, reason = '' }) {
   const run = await findRunById(runId);
   assertCanApproveAgentRun(actor, run);
+  if (run.agentType === 'no_show_recovery' && ['queued_for_start', 'planned'].includes(run.status) && !(run.actions || []).length) {
+    const cancelled = await prisma.agentRun.update({ where: { id: runId }, data: { status: 'cancelled', error: reason || 'Rejected before workflow start.', completedAt: new Date() }, include: RUN_INCLUDE });
+    const trace = await findTraceByRunId(runId);
+    await safeRecordAgentEvent({ traceId: trace?.id, runId, phase: 'completion', eventType: 'workflow_cancelled', status: 'completed', title: 'Recovery ticket rejected before start' });
+    await safeObservabilityOperation(() => completeAgentTrace(trace?.id, 'cancelled'), { operation: 'cancel_ticket_trace', traceId: trace?.id, runId });
+    return publicRun(cancelled);
+  }
   actionIds.forEach((actionId) => {
     const current = run.actions.find((action) => action.id === actionId);
     if (current && ['proposed', 'approved'].includes(current.status)) transitionActionStatus({ from: current.status, to: 'rejected' });
@@ -288,6 +395,13 @@ async function rejectAgentActions({ runId, actionIds, actor, reason = '' }) {
   const trace = await findTraceByRunId(runId);
   for (const actionId of actionIds) {
     await safeRecordAgentEvent({ traceId: trace?.id, runId, actionId, phase: 'approval', eventType: 'action_rejected', status: 'info', title: 'Action rejected', metadata: { actionId } });
+  }
+  if (run.agentType === 'no_show_recovery' && run.actions.length && run.actions.every((action) => action.status === 'rejected' || actionIds.includes(action.id))) {
+    const cancelled = await prisma.agentRun.update({ where: { id: runId }, data: { status: 'cancelled', completedAt: new Date() }, include: RUN_INCLUDE });
+    const cancelledTrace = await findTraceByRunId(runId);
+    await safeRecordAgentEvent({ traceId: cancelledTrace?.id, runId, phase: 'completion', eventType: 'workflow_cancelled', status: 'completed', title: 'No-show workflow rejected by administrator' });
+    await safeObservabilityOperation(() => completeAgentTrace(cancelledTrace?.id, 'cancelled'), { operation: 'complete_cancelled_trace', traceId: cancelledTrace?.id, runId });
+    return publicRun(cancelled);
   }
   const updated = await updateRunStatus(runId);
   if (['completed', 'partially_completed', 'failed'].includes(updated.status)) {
@@ -336,9 +450,9 @@ const NO_SHOW_EXECUTION_STEPS = [
 
 function pacingConfig(modeOverride) {
   const mode = modeOverride === 'presentation_paced' || (!modeOverride && process.env.AGENT_EXECUTION_PACING_MODE === 'presentation_paced') ? 'presentation_paced' : 'live';
-  const min = Math.min(Math.max(Number(process.env.AGENT_STAGE_MIN_VISIBLE_MS || 800), 0), 1400);
-  const max = Math.min(Math.max(Number(process.env.AGENT_STAGE_MAX_VISIBLE_MS || 1400), min), 2000);
-  const total = Math.min(Math.max(Number(process.env.AGENT_TOTAL_PACING_LIMIT_MS || 10000), 0), 15000);
+  const min = Math.min(Math.max(Number(process.env.AGENT_STAGE_MIN_VISIBLE_MS || 5000), 0), 5000);
+  const max = Math.min(Math.max(Number(process.env.AGENT_STAGE_MAX_VISIBLE_MS || 5000), min), 5000);
+  const total = Math.min(Math.max(Number(process.env.AGENT_TOTAL_PACING_LIMIT_MS || 15000), 0), 15000);
   return { mode, min, max, total, elapsed: 0 };
 }
 
@@ -501,6 +615,7 @@ async function executeApprovedActions({ runId, actor, executionMode }) {
 async function approveAndRunAgent({ runId, actor, actionIds, executionMode = 'live' }) {
   const run = await findRunById(runId);
   if (!run) throw Object.assign(new Error('Agent run not found.'), { status: 404, code: 'AGENT_RUN_NOT_FOUND' });
+  if (run.agentType === 'no_show_recovery') return approveAndContinueNoShowWorkflow({ runId, actor, actionIds, executionMode });
   if (!['live', 'presentation_paced'].includes(executionMode)) throw Object.assign(new Error('Unsupported execution mode.'), { status: 400, code: 'AGENT_EXECUTION_MODE_INVALID' });
   if (executionMode === 'presentation_paced' && actor?.role !== 'admin') throw Object.assign(new Error('Presentation mode requires administrator access.'), { status: 403, code: 'AGENT_ADMIN_REQUIRED' });
   if (run.agentType === 'no_show_recovery' && actor?.role !== 'admin') {
@@ -517,6 +632,23 @@ async function approveAndRunAgent({ runId, actor, actionIds, executionMode = 'li
   return executeApprovedActions({ runId, actor, executionMode });
 }
 
+async function approveAndContinueNoShowWorkflow({ runId, actor, actionIds, executionMode = 'live' }) {
+  if (actor?.role !== 'admin') throw Object.assign(new Error('Only an administrator can approve and continue no-show recovery.'), { status: 403, code: 'AGENT_ADMIN_REQUIRED' });
+  const run = await findRunById(runId);
+  if (!run || run.agentType !== 'no_show_recovery') throw Object.assign(new Error('No-show workflow not found.'), { status: 404, code: 'AGENT_RUN_NOT_FOUND' });
+  if (run.status === 'queued_for_start' || run.status === 'planned') throw Object.assign(new Error('Start the workflow before approving the draft.'), { status: 409, code: 'AGENT_WORKFLOW_NOT_STARTED' });
+  if (run.status === 'completed') return publicRun(run);
+  if (run.status !== 'awaiting_approval') throw Object.assign(new Error('No-show draft is not awaiting approval.'), { status: 409, code: 'AGENT_APPROVAL_NOT_AVAILABLE' });
+  const approvalAvailableAt = run.approvalAvailableAt ? new Date(run.approvalAvailableAt).getTime() : 0;
+  if (approvalAvailableAt > Date.now()) {
+    const error = Object.assign(new Error('Approval is not available yet.'), { status: 409, code: 'AGENT_APPROVAL_NOT_YET_AVAILABLE', approvalAvailableAt: new Date(approvalAvailableAt).toISOString(), remainingMs: approvalAvailableAt - Date.now() });
+    throw error;
+  }
+  await safeRecordAgentEvent({ traceId: (await findTraceByRunId(runId))?.id, runId, phase: 'approval', eventType: 'admin_approval_requested', status: 'started', title: 'Administrator approval requested' });
+  await approveAgentActions({ runId, actionIds: actionIds?.length ? actionIds : run.actions.filter((action) => action.status === 'proposed').map((action) => action.id), actor });
+  return executeApprovedActions({ runId, actor, executionMode });
+}
+
 module.exports = {
   createNoShowRecoveryPlan,
   createPostVisitFollowUpPlan,
@@ -524,5 +656,8 @@ module.exports = {
   approveAgentActions,
   rejectAgentActions,
   executeApprovedActions,
-  approveAndRunAgent
+  approveAndRunAgent,
+  createNoShowTicket,
+  startNoShowWorkflow,
+  approveAndContinueNoShowWorkflow
 };

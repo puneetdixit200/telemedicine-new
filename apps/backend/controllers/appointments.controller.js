@@ -685,8 +685,8 @@ const appointmentsController = {
 
       const refreshed = await ensureAppointmentAccess(appointmentId, req.user);
       const successMessage = run?.status === 'deduplicated'
-        ? 'An agent run already exists for this no-show occurrence. No duplicate run or notification was created.'
-        : 'Appointment marked as no-show. A new AI follow-up draft is being prepared for administrator approval. The patient has not been notified yet.';
+        ? 'A recovery ticket already exists for this no-show occurrence. No duplicate AI workflow or notification was created.'
+        : 'Appointment marked as no-show. An AI recovery ticket has been created for the administrator. The workflow has not started, and the patient has not been notified.';
 
       return renderAppointmentPage(res, req.user, refreshed || appt, {
         followUp: { threadId: null, messageId: null, warning: null, runId: run?.id || null, traceId: trace.traceId },

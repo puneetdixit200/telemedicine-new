@@ -17,6 +17,8 @@ describe('agent state machine', () => {
     expect(() => transitionRunStatus({ from: 'executing', to: 'completed' })).not.toThrow();
     expect(() => transitionActionStatus({ from: 'approved', to: 'executing' })).not.toThrow();
     expect(() => transitionTraceStatus({ from: 'completed', to: 'executing' })).toThrow(/Invalid trace transition/);
+    expect(() => transitionRunStatus({ from: 'queued_for_start', to: 'planned' })).not.toThrow();
+    expect(() => transitionRunStatus({ from: 'queued_for_start', to: 'awaiting_approval' })).toThrow(/Invalid run transition/);
     expect(() => transitionRunStatus({ from: 'failed', to: 'awaiting_approval' })).toThrow(/Invalid run transition/);
     expect(() => transitionActionStatus({ from: 'rejected', to: 'executing' })).toThrow(/Invalid action transition/);
   });
@@ -37,6 +39,11 @@ describe('agent state machine', () => {
     });
     expect(pipeline.deduplication).toMatchObject({ state: 'completed', reason: 'Existing run reused' });
     expect(pipeline.planning).toMatchObject({ state: 'skipped', reason: 'Duplicate request reused an existing run' });
+  });
+
+  it('keeps an unstarted ticket entirely not started', () => {
+    const pipeline = derivePipelineState({ trace: { status: 'active' }, run: { status: 'queued_for_start' }, events: [{ eventType: 'trace_created', phase: 'trigger', status: 'completed' }] });
+    expect(Object.values(pipeline).every((stage) => stage.state === 'not_started')).toBe(true);
   });
 
   it('reports trace, run, and action invariant violations', () => {
