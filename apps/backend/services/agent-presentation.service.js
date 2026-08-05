@@ -12,27 +12,53 @@ const PRE_APPROVAL_PHASES = [
   'approval'
 ];
 const POST_APPROVAL_PHASES = ['execution', 'notification', 'completion'];
-const TERMINAL_STATES = new Set(['completed', 'failed', 'skipped', 'not_applicable', 'inconsistent']);
+
+const PHASE_READY_EVENTS = {
+  context: new Set(['context_loading_completed']),
+  policy: new Set(['policy_validation_completed']),
+  planning: new Set(['ai_response_received', 'deterministic_fallback_activated']),
+  validation: new Set(['response_schema_validation_passed', 'localized_fallback_template_used']),
+  persistence: new Set(['agent_actions_created'])
+};
+
+const RECOVERY_EVENTS = {
+  planning: new Set(['deterministic_fallback_activated']),
+  validation: new Set(['localized_fallback_template_used'])
+};
 
 function toMs(value) {
   const parsed = value ? new Date(value).getTime() : NaN;
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function phaseEvents(events, phase) {
+  return (events || []).filter((event) => event.phase === phase);
+}
+
+function hasEvent(events, eventTypes) {
+  return (events || []).some((event) => eventTypes.has(event.eventType));
+}
+
 function latestPhaseTime(events, phase) {
-  const values = (events || [])
-    .filter((event) => event.phase === phase)
+  const values = phaseEvents(events, phase)
     .map((event) => toMs(event.createdAt))
     .filter(Number.isFinite);
   return values.length ? Math.max(...values) : null;
 }
 
-function phaseActuallyReady(pipeline, run, phase) {
+function phaseActuallyReady(run, phase, events) {
   if (phase === 'trigger' || phase === 'deduplication') return Boolean(run?.workflowStartedAt);
   if (phase === 'approval') {
     return ['awaiting_approval', 'executing', 'completed', 'partially_completed'].includes(run?.status);
   }
-  return ['completed', 'skipped'].includes(pipeline?.[phase]?.state);
+
+  const readyEvents = PHASE_READY_EVENTS[phase];
+  return readyEvents ? hasEvent(phaseEvents(events, phase), readyEvents) : false;
+}
+
+function phaseFailureRecovered(phase, events) {
+  const recoveryEvents = RECOVERY_EVENTS[phase];
+  return recoveryEvents ? hasEvent(phaseEvents(events, phase), recoveryEvents) : false;
 }
 
 function activeStage({ base, visibleStartedAt, minimumVisibleUntil, now, reason }) {
@@ -43,15 +69,16 @@ function activeStage({ base, visibleStartedAt, minimumVisibleUntil, now, reason 
     durationMs: Math.max(0, now - visibleStartedAt),
     visibleStartedAt: new Date(visibleStartedAt).toISOString(),
     minimumVisibleUntil: new Date(minimumVisibleUntil).toISOString(),
+    visibleCompletedAt: null,
     remainingMs: Math.max(0, minimumVisibleUntil - now)
   };
 }
 
-function completedStage({ base, visibleStartedAt, visibleCompletedAt }) {
+function completedStage({ base, visibleStartedAt, visibleCompletedAt, reason = null }) {
   return {
     ...base,
     state: 'completed',
-    reason: null,
+    reason,
     durationMs: Math.max(MIN_STAGE_VISIBLE_MS, visibleCompletedAt - visibleStartedAt),
     visibleStartedAt: new Date(visibleStartedAt).toISOString(),
     minimumVisibleUntil: new Date(visibleStartedAt + MIN_STAGE_VISIBLE_MS).toISOString(),
@@ -73,6 +100,15 @@ function notStartedStage(base) {
   };
 }
 
+function failedStage(base, reason) {
+  return {
+    ...base,
+    state: 'failed',
+    reason: reason || base.reason || 'The backend stage failed',
+    remainingMs: 0
+  };
+}
+
 function applyPreApprovalTimeline({ pipeline, trace, run, actions, events, now }) {
   const workflowStartedAt = toMs(run?.workflowStartedAt);
   if (!workflowStartedAt) return pipeline;
@@ -81,20 +117,24 @@ function applyPreApprovalTimeline({ pipeline, trace, run, actions, events, now }
   let blocked = false;
 
   for (const phase of PRE_APPROVAL_PHASES) {
-    const base = pipeline[phase] || { state: 'not_started', durationMs: null, reason: null };
-
-    if (base.state === 'failed') {
-      pipeline[phase] = base;
-      blocked = true;
-      continue;
-    }
+    const originalBase = pipeline[phase] || { state: 'not_started', durationMs: null, reason: null };
+    const recovered = phaseFailureRecovered(phase, events);
+    const base = recovered
+      ? { ...originalBase, state: 'completed', reason: 'Recovered using the safe localized fallback' }
+      : originalBase;
 
     if (blocked) {
       pipeline[phase] = notStartedStage(base);
       continue;
     }
 
-    const ready = phaseActuallyReady(pipeline, run, phase);
+    if (base.state === 'failed') {
+      pipeline[phase] = failedStage(base);
+      blocked = true;
+      continue;
+    }
+
+    const ready = phaseActuallyReady(run, phase, events);
     const actualAt = phase === 'trigger' || phase === 'deduplication'
       ? workflowStartedAt
       : latestPhaseTime(events, phase);
@@ -126,7 +166,9 @@ function applyPreApprovalTimeline({ pipeline, trace, run, actions, events, now }
     if (now < visibleCompletedAt) {
       const reason = phase === 'approval'
         ? 'Review window is opening; the patient has not been notified'
-        : 'Minimum five-second presentation window';
+        : recovered
+          ? 'Safe fallback completed; holding the five-second presentation window'
+          : 'Minimum five-second presentation window';
       pipeline[phase] = activeStage({
         base,
         visibleStartedAt,
@@ -152,7 +194,12 @@ function applyPreApprovalTimeline({ pipeline, trace, run, actions, events, now }
         pipeline[phase] = completedStage({ base, visibleStartedAt, visibleCompletedAt });
       }
     } else {
-      pipeline[phase] = completedStage({ base, visibleStartedAt, visibleCompletedAt });
+      pipeline[phase] = completedStage({
+        base,
+        visibleStartedAt,
+        visibleCompletedAt,
+        reason: recovered ? 'Recovered using the safe localized fallback' : null
+      });
     }
   }
 
@@ -184,9 +231,21 @@ function applyPostApprovalTimeline({ pipeline, run, actions, now }) {
     return pipeline;
   }
 
+  let blocked = false;
+
   POST_APPROVAL_PHASES.forEach((phase, index) => {
     const base = pipeline[phase] || { state: 'not_started', durationMs: null, reason: null };
-    if (base.state === 'failed') return;
+
+    if (blocked) {
+      pipeline[phase] = notStartedStage(base);
+      return;
+    }
+
+    if (base.state === 'failed') {
+      pipeline[phase] = failedStage(base);
+      blocked = true;
+      return;
+    }
 
     const visibleStartedAt = approvedAt + index * MIN_STAGE_VISIBLE_MS;
     const minimumVisibleUntil = visibleStartedAt + MIN_STAGE_VISIBLE_MS;
@@ -197,7 +256,12 @@ function applyPostApprovalTimeline({ pipeline, run, actions, now }) {
     }
 
     if (phase === 'completion') {
-      const runActuallyCompleted = ['completed', 'partially_completed', 'failed'].includes(run?.status);
+      if (run?.status === 'failed') {
+        pipeline[phase] = failedStage(base, 'Run failed before patient delivery completed');
+        return;
+      }
+
+      const runActuallyCompleted = ['completed', 'partially_completed'].includes(run?.status);
       const actualCompletedAt = toMs(run?.completedAt);
       const visibleCompletedAt = Math.max(minimumVisibleUntil, actualCompletedAt || minimumVisibleUntil);
 
