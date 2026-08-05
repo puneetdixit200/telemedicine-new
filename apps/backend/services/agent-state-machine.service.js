@@ -10,6 +10,7 @@ const TRACE_TRANSITIONS = {
 };
 
 const RUN_TRANSITIONS = {
+  queued_for_start: new Set(['planned', 'failed', 'cancelled']),
   planned: new Set(['awaiting_approval', 'failed', 'cancelled']),
   awaiting_approval: new Set(['executing', 'completed', 'partially_completed', 'failed', 'cancelled']),
   executing: new Set(['completed', 'partially_completed', 'failed', 'cancelled']),
@@ -134,6 +135,7 @@ const AGENT_EVENT_DEFINITIONS = Object.freeze({
   run_partially_completed: { phase: 'completion', effect: 'complete', terminalForPhase: true, requiresRun: true },
   run_failed: { phase: 'completion', effect: 'fail', terminalForPhase: true, requiresRun: true },
   trace_completed: { phase: 'completion', effect: 'complete', terminalForPhase: true },
+  workflow_cancelled: { phase: 'completion', effect: 'complete', terminalForPhase: true },
   state_reconciled: { phase: 'system', effect: 'progress' }
 });
 
@@ -178,6 +180,11 @@ function validateTraceInvariants(trace, run = trace?.run, events = trace?.events
 function validateRunInvariants(run) {
   const errors = [];
   const actions = run?.actions || [];
+  if (run?.status === 'queued_for_start') {
+    if (run.plan) errors.push('queued_run_has_plan');
+    if (actions.length) errors.push('queued_run_has_actions');
+    if (run.workflowStartedAt) errors.push('queued_run_has_startedAt');
+  }
   if (run?.status === 'completed' && actions.some((action) => ['proposed', 'approved', 'executing'].includes(action.status))) errors.push('completed_run_has_unfinished_actions');
   if (run?.status === 'awaiting_approval' && !actions.some((action) => ['proposed', 'approved'].includes(action.status))) errors.push('awaiting_run_without_pending_action');
   if (isTerminalRunStatus(run?.status) && run.status !== 'cancelled' && !run.completedAt) errors.push('terminal_run_missing_completedAt');
@@ -196,6 +203,9 @@ const PIPELINE_PHASES = ['trigger', 'context', 'policy', 'deduplication', 'plann
 function derivePipelineState({ trace, run, actions = run?.actions || [], events = trace?.events || [] } = {}) {
   const ordered = [...events].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || String(a.id).localeCompare(String(b.id)));
   const pipeline = {};
+  if (run?.status === 'queued_for_start' && !run.workflowStartedAt) {
+    return Object.fromEntries(PIPELINE_PHASES.map((phase) => [phase, { state: 'not_started', durationMs: null, reason: 'Waiting for administrator to start' }]));
+  }
   for (const phase of PIPELINE_PHASES) {
     const phaseEvents = ordered.filter((event) => event.phase === phase);
     const definitions = phaseEvents.map((event) => AGENT_EVENT_DEFINITIONS[event.eventType]).filter(Boolean);

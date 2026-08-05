@@ -34,6 +34,7 @@ enum AgentType {
 }
 
 enum AgentRunStatus {
+  queued_for_start
   planned
   awaiting_approval
   executing
@@ -944,8 +945,11 @@ model AgentRun {
   summary     String?
   error       String?
 
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
+  startedAt           DateTime  @default(now())
+  workflowStartedAt   DateTime?
+  workflowStartedById String?
+  approvalAvailableAt DateTime?
+  completedAt         DateTime?
 
   actions         AgentAction[]
   executionTraces AgentExecutionTrace[]

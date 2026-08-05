@@ -2,7 +2,7 @@ const { prisma } = require('../models/db');
 const { createSupabaseExpressClient, getSupabaseAnonKey, getSupabaseUrl } = require('../services/supabase-auth.service');
 const { derivePipelineState, validateTraceInvariants, validateRunInvariants, isHistoricalUnresolvedTrace } = require('../services/agent-state-machine.service');
 const { findInconsistentAgentStates, reconcileTrace } = require('../services/agent-state-reconciliation.service');
-const { approveAndRunAgent } = require('../services/agent-orchestrator.service');
+const { approveAndRunAgent, startNoShowWorkflow, approveAndContinueNoShowWorkflow } = require('../services/agent-orchestrator.service');
 
 const TRACE_INCLUDE = {
   appointment: { select: { id: true, status: true, doctorId: true, patientId: true, startAt: true } },
@@ -70,7 +70,7 @@ function safeTrace(trace) {
     run: run ? {
       id: run.id, agentType: run.agentType, status: run.status, dedupeKey: run.dedupeKey,
       triggeredBy: run.triggeredBy, executionMode: run.input?.executionMode || 'live', summary: run.summary, plan: safePlan(run.plan), context: safeContext(run.context),
-      startedAt: run.startedAt, completedAt: run.completedAt, createdAt: run.createdAt,
+      startedAt: run.startedAt, workflowStartedAt: run.workflowStartedAt, workflowStartedById: run.workflowStartedById, approvalAvailableAt: run.approvalAvailableAt, completedAt: run.completedAt, createdAt: run.createdAt,
       actions: actions.map(safeAction),
       messageDrafts: (run.messageDrafts || []).map((draft) => ({ id: draft.id, version: draft.version, status: draft.status, languageCode: draft.languageCode, languageName: draft.languageName, languageScript: draft.languageScript, languageDirection: draft.languageDirection, languageSource: draft.languageSource, languageFallbackUsed: draft.languageFallbackUsed, notificationTitle: draft.notificationTitle, notificationBody: draft.notificationBody, generationSource: draft.generationSource, contentHash: String(draft.contentHash || '').slice(0, 12), approvedById: draft.approvedById, approvedAt: draft.approvedAt, deliveredAt: draft.deliveredAt })),
       executionSteps: (run.executionSteps || []).map((step) => ({ id: step.id, sequence: step.sequence, stepKey: step.stepKey, title: step.title, status: step.status, startedAt: step.startedAt, completedAt: step.completedAt, durationMs: step.durationMs, errorCode: step.errorCode }))
@@ -194,6 +194,22 @@ const adminAgentsController = {
       return res.status(200).json({ ok: true, run });
     } catch (error) {
       return res.status(Number(error.status || 500)).json({ ok: false, code: error.code || 'AGENT_WORKFLOW_FAILED', error: error.message || 'Agent workflow failed.', ...(error.run ? { run: error.run } : {}) });
+    }
+  },
+  start: async (req, res) => {
+    try {
+      const run = await startNoShowWorkflow({ runId: req.params.runId, actor: req.user });
+      return res.status(200).json({ ok: true, run });
+    } catch (error) {
+      return res.status(Number(error.status || 500)).json({ ok: false, code: error.code || 'AGENT_WORKFLOW_FAILED', error: error.message || 'Agent workflow failed.', ...(error.run ? { run: error.run } : {}) });
+    }
+  },
+  approveAndContinue: async (req, res) => {
+    try {
+      const run = await approveAndContinueNoShowWorkflow({ runId: req.params.runId, actor: req.user, actionIds: Array.isArray(req.body?.actionIds) ? req.body.actionIds : [], executionMode: req.body?.executionMode || 'live' });
+      return res.status(200).json({ ok: true, run });
+    } catch (error) {
+      return res.status(Number(error.status || 500)).json({ ok: false, code: error.code || 'AGENT_WORKFLOW_FAILED', error: error.message || 'Agent workflow failed.', ...(error.run ? { run: error.run } : {}), ...(error.approvalAvailableAt ? { approvalAvailableAt: error.approvalAvailableAt, remainingMs: error.remainingMs } : {}) });
     }
   },
   metrics: async (req, res) => res.json({ ok: true, range: req.query.range || '24h', ...(await overview()) }),
