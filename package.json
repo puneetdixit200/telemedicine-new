@@ -26,7 +26,8 @@
     "mobile:sync": "npm run mobile:build && npx cap sync",
     "mobile:add:android": "npx cap add android",
     "mobile:add:ios": "npx cap add ios",
-    "mobile:open:android": "npx cap open ios",
+    "mobile:open:android": "npx cap open android",
+    "mobile:open:ios": "npx cap open ios",
     "uploads:migrate:azure": "node scripts/migrate-local-uploads-to-azure.js",
     "uploads:migrate:azure:clean": "node scripts/migrate-local-uploads-to-azure.js --delete-local",
     "lint": "node --check app.js && node --check server-next.js && node --check scripts/vercel-build.js && node --check scripts/verify-production-schema.js && node --check apps/backend/services/supabase-auth.service.js && node --check apps/backend/public/js/call.js && node --check public/js/call.js && node --check playwright.config.js && node --check jest.config.js && node --check e2e/telemedicine.spec.js",
@@ -43,7 +44,6 @@
   },
   "dependencies": {
     "@azure/storage-blob": "^12.28.0",
-    "@prisma/client": "^6.6.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.87.1",
     "applicationinsights": "^3.6.2",
@@ -66,7 +66,9 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@azure/storage-blob": "^12.28.0",
     "@playwright/test": "^1.59.1",
+    "@prisma/client": "^6.6.0",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.27",
     "jest": "^29.7.0",
