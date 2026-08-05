@@ -1,6 +1,7 @@
 const { prisma } = require('../models/db');
 const { createSupabaseExpressClient, getSupabaseAnonKey, getSupabaseUrl } = require('../services/supabase-auth.service');
 const { derivePipelineState, validateTraceInvariants, validateRunInvariants, isHistoricalUnresolvedTrace } = require('../services/agent-state-machine.service');
+const { applyNoShowPresentationTimeline } = require('../services/agent-presentation.service');
 const { findInconsistentAgentStates, reconcileTrace } = require('../services/agent-state-reconciliation.service');
 const { approveAndRunAgent, startNoShowWorkflow, approveAndContinueNoShowWorkflow } = require('../services/agent-orchestrator.service');
 
@@ -59,6 +60,17 @@ function safeTrace(trace) {
   const historicalUnresolved = isHistoricalUnresolvedTrace(trace, run);
   const invariantErrors = [...validateTraceInvariants(trace, run, trace.events), ...validateRunInvariants(run)].filter((error) => !(historicalUnresolved && error === 'deduplicated_trace_missing_source_trace'));
   const actions = run?.actions || [];
+  const rawPipeline = derivePipelineState({ trace, run, actions, events: trace.events || [] });
+  const pipeline = applyNoShowPresentationTimeline({
+    pipeline: rawPipeline,
+    trace,
+    run,
+    actions,
+    events: trace.events || []
+  });
+  const approvalAvailableAtMs = run?.approvalAvailableAt ? new Date(run.approvalAvailableAt).getTime() : null;
+  const approvalRemainingMs = Number.isFinite(approvalAvailableAtMs) ? Math.max(0, approvalAvailableAtMs - Date.now()) : null;
+
   return {
     id: trace.id, correlationId: trace.correlationId, requestId: trace.requestId, traceKind: trace.traceKind, sourceTraceId: trace.sourceTraceId, agentType: trace.agentType,
     appointmentId: trace.appointmentId, status: trace.status, startedAt: trace.startedAt,
@@ -80,13 +92,16 @@ function safeTrace(trace) {
     presentation: {
       traceStatus: trace.status,
       outcome: trace.status === 'deduplicated' ? 'existing_run_reused' : trace.status,
-      currentPhase: trace.status === 'awaiting_approval' ? 'approval' : trace.status === 'executing' ? 'execution' : null,
+      currentPhase: Object.entries(pipeline).find(([, value]) => ['active', 'waiting'].includes(value?.state))?.[0] || null,
       isTerminal: ['completed', 'partially_completed', 'failed', 'deduplicated', 'cancelled'].includes(trace.status),
-      requiresHumanAction: trace.status === 'awaiting_approval',
+      requiresHumanAction: trace.status === 'awaiting_approval' && approvalRemainingMs === 0,
+      approvalReady: trace.status === 'awaiting_approval' && approvalRemainingMs === 0,
+      approvalRemainingMs,
+      minimumStageVisibleMs: 5000,
       linkedRunStatus: run?.status || null,
       model: run?.plan?.model || null,
       fallbackUsed: run?.plan?.fallbackUsed ?? null,
-      pipeline: derivePipelineState({ trace, run, actions, events: trace.events || [] }),
+      pipeline,
       integrityStatus: historicalUnresolved ? 'historical_unresolved' : invariantErrors.length ? 'inconsistent' : 'healthy',
       invariantErrors
     }
@@ -156,6 +171,16 @@ async function overview() {
   };
 }
 
+async function persistMandatoryNoShowPacing(runId) {
+  const row = await prisma.agentRun.findUnique({ where: { id: runId }, select: { agentType: true, input: true } });
+  if (!row || row.agentType !== 'no_show_recovery') return;
+  const input = row.input && typeof row.input === 'object' && !Array.isArray(row.input) ? row.input : {};
+  await prisma.agentRun.update({
+    where: { id: runId },
+    data: { input: { ...input, executionMode: 'presentation_paced' } }
+  });
+}
+
 const adminAgentsController = {
   realtimeToken: async (req, res) => {
     const supabase = createSupabaseExpressClient(req, res);
@@ -190,7 +215,8 @@ const adminAgentsController = {
   },
   approveAndRun: async (req, res) => {
     try {
-      const run = await approveAndRunAgent({ runId: req.params.runId, actor: req.user, actionIds: Array.isArray(req.body?.actionIds) ? req.body.actionIds : [], executionMode: req.body?.executionMode || 'live' });
+      await persistMandatoryNoShowPacing(req.params.runId);
+      const run = await approveAndRunAgent({ runId: req.params.runId, actor: req.user, actionIds: Array.isArray(req.body?.actionIds) ? req.body.actionIds : [], executionMode: 'presentation_paced' });
       return res.status(200).json({ ok: true, run });
     } catch (error) {
       return res.status(Number(error.status || 500)).json({ ok: false, code: error.code || 'AGENT_WORKFLOW_FAILED', error: error.message || 'Agent workflow failed.', ...(error.run ? { run: error.run } : {}) });
@@ -206,7 +232,8 @@ const adminAgentsController = {
   },
   approveAndContinue: async (req, res) => {
     try {
-      const run = await approveAndContinueNoShowWorkflow({ runId: req.params.runId, actor: req.user, actionIds: Array.isArray(req.body?.actionIds) ? req.body.actionIds : [], executionMode: req.body?.executionMode || 'live' });
+      await persistMandatoryNoShowPacing(req.params.runId);
+      const run = await approveAndContinueNoShowWorkflow({ runId: req.params.runId, actor: req.user, actionIds: Array.isArray(req.body?.actionIds) ? req.body.actionIds : [], executionMode: 'presentation_paced' });
       return res.status(200).json({ ok: true, run });
     } catch (error) {
       return res.status(Number(error.status || 500)).json({ ok: false, code: error.code || 'AGENT_WORKFLOW_FAILED', error: error.message || 'Agent workflow failed.', ...(error.run ? { run: error.run } : {}), ...(error.approvalAvailableAt ? { approvalAvailableAt: error.approvalAvailableAt, remainingMs: error.remainingMs } : {}) });
