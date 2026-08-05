@@ -225,6 +225,7 @@ async function initializeNoShowPresentationSteps(runId, traceId) {
 
 async function createNoShowTicket({ appointmentId, actor, input = {}, traceContext }) {
   const current = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { id: true, status: true, doctorId: true, patientId: true, noShowOccurrenceId: true } });
+  assertCanGenerateNoShowPlan(actor, current);
   if (current?.status === 'booked') {
     const occurrenceId = crypto.randomUUID();
     const transitioned = await prisma.appointment.updateMany({ where: { id: appointmentId, status: 'booked' }, data: { status: 'no_show', noShowVersion: { increment: 1 }, noShowOccurrenceId: occurrenceId } });
