@@ -19,6 +19,17 @@ const PHASES = [
   'completion'
 ];
 
+const READY_EVENT_BY_PHASE = {
+  trigger: 'admin_workflow_started',
+  context: 'context_loading_completed',
+  policy: 'policy_validation_completed',
+  deduplication: 'dedupe_miss',
+  planning: 'ai_response_received',
+  validation: 'response_schema_validation_passed',
+  persistence: 'agent_actions_created',
+  approval: 'awaiting_admin_approval'
+};
+
 function iso(milliseconds) {
   return new Date(milliseconds).toISOString();
 }
@@ -37,6 +48,7 @@ function phaseEvents(startedAt, offsets = {}) {
   return PHASES.slice(0, 8).map((phase, index) => ({
     id: `event-${phase}`,
     phase,
+    eventType: READY_EVENT_BY_PHASE[phase],
     status: 'completed',
     createdAt: iso(startedAt + (offsets[phase] ?? index * 100))
   }));
@@ -167,6 +179,95 @@ describe('no-show workflow presentation timeline', () => {
     expect(result.context.state).toBe('active');
     expect(result.context.minimumVisibleUntil).toBe(iso(startedAt + 12000));
     expect(result.policy.state).toBe('not_started');
+  });
+
+  it('shows a recovered provider fallback as completed instead of failed', () => {
+    const startedAt = 550000;
+    const events = phaseEvents(startedAt).filter((event) => !['planning', 'validation'].includes(event.phase));
+    events.push(
+      {
+        id: 'planning-failed',
+        phase: 'planning',
+        eventType: 'ai_request_failed',
+        status: 'failed',
+        createdAt: iso(startedAt + 500)
+      },
+      {
+        id: 'planning-recovered',
+        phase: 'planning',
+        eventType: 'deterministic_fallback_activated',
+        status: 'completed',
+        createdAt: iso(startedAt + 700)
+      },
+      {
+        id: 'validation-failed',
+        phase: 'validation',
+        eventType: 'localized_output_validation_failed',
+        status: 'failed',
+        createdAt: iso(startedAt + 800)
+      },
+      {
+        id: 'validation-recovered',
+        phase: 'validation',
+        eventType: 'localized_fallback_template_used',
+        status: 'completed',
+        createdAt: iso(startedAt + 900)
+      },
+      {
+        id: 'schema-passed',
+        phase: 'validation',
+        eventType: 'response_schema_validation_passed',
+        status: 'completed',
+        createdAt: iso(startedAt + 1000)
+      }
+    );
+    const raw = pipeline();
+    raw.planning.state = 'failed';
+    raw.validation.state = 'failed';
+
+    const result = applyNoShowPresentationTimeline({
+      pipeline: raw,
+      trace: { status: 'awaiting_approval' },
+      run: baseRun(startedAt),
+      actions: [],
+      events,
+      now: startedAt + 41000
+    });
+
+    expect(result.planning.state).toBe('completed');
+    expect(result.planning.reason).toContain('safe localized fallback');
+    expect(result.validation.state).toBe('completed');
+    expect(result.validation.reason).toContain('safe localized fallback');
+    expect(result.approval.state).toBe('waiting');
+  });
+
+  it('stops later presentation stages after an unrecovered failure', () => {
+    const startedAt = 575000;
+    const events = phaseEvents(startedAt).filter((event) => event.phase !== 'policy');
+    events.push({
+      id: 'policy-failed',
+      phase: 'policy',
+      eventType: 'policy_validation_failed',
+      status: 'failed',
+      createdAt: iso(startedAt + 500)
+    });
+    const raw = pipeline();
+    raw.policy.state = 'failed';
+
+    const result = applyNoShowPresentationTimeline({
+      pipeline: raw,
+      trace: { status: 'failed' },
+      run: baseRun(startedAt, { status: 'failed' }),
+      actions: [],
+      events,
+      now: startedAt + 30000
+    });
+
+    expect(result.policy.state).toBe('failed');
+    expect(result.deduplication.state).toBe('not_started');
+    expect(result.planning.state).toBe('not_started');
+    expect(result.execution.state).toBe('not_started');
+    expect(result.notification.state).toBe('not_started');
   });
 
   it('shows the three post-approval stages in separate five-second windows', () => {
