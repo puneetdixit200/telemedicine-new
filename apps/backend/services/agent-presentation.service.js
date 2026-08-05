@@ -223,11 +223,9 @@ function applyPostApprovalTimeline({ pipeline, run, actions, now }) {
   const approvedAt = approvedAtValues.length ? Math.min(...approvedAtValues) : null;
 
   if (!approvedAt) {
-    if (run?.status === 'awaiting_approval') {
-      POST_APPROVAL_PHASES.forEach((phase) => {
-        pipeline[phase] = notStartedStage(pipeline[phase] || {});
-      });
-    }
+    POST_APPROVAL_PHASES.forEach((phase) => {
+      pipeline[phase] = notStartedStage(pipeline[phase] || {});
+    });
     return pipeline;
   }
 
