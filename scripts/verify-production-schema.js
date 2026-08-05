@@ -38,8 +38,13 @@ async function main() {
     SELECT trigger_name
     FROM information_schema.triggers
     WHERE event_object_schema = 'public'
-      AND event_object_table = 'AgentRun'
-      AND trigger_name = 'AgentRun_enforce_approval_window'
+      AND (
+        (event_object_table = 'AgentRun'
+          AND trigger_name = 'AgentRun_enforce_approval_window')
+        OR
+        (event_object_table = 'AgentExecutionStep'
+          AND trigger_name = 'AgentExecutionStep_namespace_no_show_sequence')
+      )
   `);
 
   const statusNames = new Set(statuses.map((row) => row.enumlabel));
@@ -58,13 +63,17 @@ async function main() {
     missing.push('AgentRun trigger: AgentRun_enforce_approval_window');
   }
 
+  if (!triggerNames.has('AgentExecutionStep_namespace_no_show_sequence')) {
+    missing.push('AgentExecutionStep trigger: AgentExecutionStep_namespace_no_show_sequence');
+  }
+
   if (missing.length) {
     throw new Error(
       `Production schema is not compatible with this deployment. Missing ${missing.join('; ')}.`
     );
   }
 
-  console.log('[schema-check] Agent workflow schema and approval timing guard are compatible.');
+  console.log('[schema-check] Agent workflow schema, approval timing guard, and execution step sequence guard are compatible.');
 }
 
 main()
