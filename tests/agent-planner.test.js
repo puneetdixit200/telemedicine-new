@@ -15,6 +15,7 @@ const {
   buildPostVisitFallback,
   validateMedicationFidelity,
   ensureSentence,
+  normalizeDoctorName,
   planNoShowRecovery
 } = require('../apps/backend/services/agent-planner.service');
 const { aiGenerate } = require('../apps/backend/services/ollama.service');
@@ -22,21 +23,33 @@ const { aiGenerate } = require('../apps/backend/services/ollama.service');
 describe('agent planner deterministic safety', () => {
   afterEach(() => jest.clearAllMocks());
 
-  it('builds a no-show fallback without claiming delivery or booking a slot', () => {
+  it('builds a reference-free no-show fallback without claiming delivery or booking a slot', () => {
     const plan = buildNoShowFallback({
       appointment: { id: 'appt-1' },
       patient: { fullName: 'Asha' },
-      doctor: { fullName: 'Ravi' },
+      doctor: { fullName: 'Dr. Ravi' },
       availableSlots: [{ id: 'slot-1', startAt: '2026-07-30T05:00:00.000Z' }],
-      quickRebookPath: '/book?doctorId=doc-1&rebook=1'
+      quickRebookPath: '/book?doctorId=10000000-0000-4000-8000-000000000003&rebook=1'
     });
 
     expect(plan).toMatchObject({
       fallbackUsed: true,
-      model: 'deterministic-fallback'
+      model: 'deterministic-fallback',
+      summary: 'Recovery plan for a missed appointment with Dr. Ravi.'
     });
-    expect(plan.patientMessage).toContain('दोबारा बुक करने के लिए यहां जाएं: /book?doctorId=doc-1&rebook=1');
+    expect(plan.patientMessage).toContain('नीचे दिए गए बटन');
+    expect(plan.patientMessage).not.toMatch(/\/book\?|doctorId=|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f-]{23}/i);
     expect(plan.patientMessage).not.toMatch(/booked|delivered|diagnos/i);
+    expect(plan.patientMessage).not.toContain('डॉ. Dr.');
+  });
+
+  it.each([
+    ['Dr. Ravi', 'Ravi'],
+    ['Dr Ravi', 'Ravi'],
+    ['Doctor Ravi', 'Ravi'],
+    ['Ravi', 'Ravi']
+  ])('normalizes doctor title for %s', (input, expected) => {
+    expect(normalizeDoctorName(input)).toBe(expected);
   });
 
   it.each([
@@ -52,6 +65,7 @@ describe('agent planner deterministic safety', () => {
 
     expect(plan.languageCode).toBe(code);
     expect(plan.patientMessage).toContain('Asha.');
+    expect(plan.patientMessage).not.toMatch(/\/book\?|doctorId=|fromAppointmentId=/i);
   });
 
   it('copies medicine fields from the prescription in post-visit fallback', () => {
@@ -109,12 +123,12 @@ describe('agent planner deterministic safety', () => {
     expect(ensureSentence(input)).toBe(expected);
   });
 
-  it('uses a valid OpenRouter JSON draft without fallback', async () => {
+  it('uses a valid reference-free OpenRouter JSON draft without fallback', async () => {
     aiGenerate.mockResolvedValue(
       JSON.stringify({
         adminSummary: 'A respectful missed-visit recovery draft.',
         notificationTitle: 'Missed appointment follow-up',
-        patientMessage: 'Please confirm a new consultation time. Rebook here: /book?doctorId=doc-1',
+        patientMessage: 'Please confirm a new consultation time and use the button below to rebook.',
         rationale: ['The appointment was marked no-show.'],
         safetyNotes: ['No medical advice is included.']
       })
@@ -126,7 +140,7 @@ describe('agent planner deterministic safety', () => {
         patient: { fullName: 'Asha', language: 'English' },
         doctor: { fullName: 'Ravi' },
         availableSlots: [],
-      quickRebookPath: '/book?doctorId=doc-1',
+        quickRebookPath: '/book?doctorId=doc-1',
         priorNoShowCount: 0
       },
       {}
@@ -135,8 +149,10 @@ describe('agent planner deterministic safety', () => {
     expect(result.plan).toMatchObject({
       fallbackUsed: false,
       model: 'openai/gpt-oss-120b',
-      patientMessage: 'Please confirm a new consultation time. Rebook here: /book?doctorId=doc-1'
+      patientMessage: 'Please confirm a new consultation time and use the button below to rebook.'
     });
+    expect(result.actions[0].arguments.metadata.quickRebookPath).toBe('/book?doctorId=doc-1');
+    expect(result.actions[0].arguments.body).not.toContain('/book?');
   });
 
   it('falls back when the configured provider fails', async () => {
@@ -156,15 +172,22 @@ describe('agent planner deterministic safety', () => {
 
     expect(result.plan).toMatchObject({ fallbackUsed: true, model: 'deterministic-fallback' });
     expect(result.plan.error).toBe('provider unavailable');
+    expect(result.plan.patientMessage).not.toContain('/book?');
   });
 
-  it('uses one corrective retry for invalid JSON before accepting a localized draft', async () => {
+  it('uses one corrective retry when the first response exposes a technical route', async () => {
     aiGenerate
-      .mockResolvedValueOnce('not json')
+      .mockResolvedValueOnce(JSON.stringify({
+        adminSummary: 'Unsafe first draft.',
+        notificationTitle: 'Missed appointment follow-up',
+        patientMessage: 'Rebook here: /book?doctorId=doc-1',
+        rationale: [],
+        safetyNotes: []
+      }))
       .mockResolvedValueOnce(JSON.stringify({
         adminSummary: 'Corrected draft.',
         notificationTitle: 'Missed appointment follow-up',
-        patientMessage: 'Please confirm a new consultation time. Rebook here: /book?doctorId=doc-1',
+        patientMessage: 'Please use the button below to choose a new consultation time.',
         rationale: [],
         safetyNotes: []
       }));
@@ -172,7 +195,8 @@ describe('agent planner deterministic safety', () => {
       appointment: { id: 'appt-1', status: 'no_show' }, patient: { fullName: 'Asha', language: 'English' }, doctor: { fullName: 'Ravi' }, availableSlots: [], quickRebookPath: '/book?doctorId=doc-1', priorNoShowCount: 0
     });
     expect(aiGenerate).toHaveBeenCalledTimes(2);
-    expect(result.plan).toMatchObject({ fallbackUsed: false, generationSource: 'openrouter', aiMetadata: { attemptCount: 2, firstAttemptValid: false, correctiveRetryUsed: true, finalGenerationSource: 'openrouter' } });
+    expect(result.plan).toMatchObject({ fallbackUsed: false, generationSource: 'openrouter', aiMetadata: { attemptCount: 2, firstAttemptValid: false, correctiveRetryUsed: true, finalGenerationSource: 'openrouter', validationFailureCategory: 'patient_content_reference_found' } });
+    expect(result.plan.patientMessage).not.toContain('/book?');
   });
 
   it('uses a localized fallback after one invalid corrective retry', async () => {
@@ -182,6 +206,7 @@ describe('agent planner deterministic safety', () => {
     });
     expect(aiGenerate).toHaveBeenCalledTimes(2);
     expect(result.plan).toMatchObject({ fallbackUsed: true, model: 'deterministic-fallback', generationSource: 'deterministic_localized_template', languageCode: 'ta', aiMetadata: { attemptCount: 2, correctiveRetryUsed: true, finalGenerationSource: 'deterministic_localized_template', fallbackUsed: true, validationFailureCategory: 'INVALID_JSON' } });
-    expect(result.plan.patientMessage).toMatch(/தமிழ்|வணக்கம்|மீண்டும்/);
+    expect(result.plan.patientMessage).toMatch(/தமிழ்|வணக்கம்|பொத்தானை/);
+    expect(result.plan.patientMessage).not.toContain('/book?');
   });
 });

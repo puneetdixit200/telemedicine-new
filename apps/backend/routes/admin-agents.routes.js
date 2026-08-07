@@ -14,6 +14,7 @@ router.get('/runs/:runId', adminAgentsController.run);
 router.post('/runs/:runId/start', adminAgentsController.start);
 router.post('/runs/:runId/approve-and-continue', adminAgentsController.approveAndContinue);
 router.post('/runs/:runId/approve-and-run', adminAgentsController.approveAndRun);
+router.post('/runs/:runId/retry', adminAgentsController.retry);
 router.get('/metrics', adminAgentsController.metrics);
 router.get('/integrity', adminAgentsController.integrity);
 router.post('/integrity/reconcile/:traceId', adminAgentsController.reconcile);

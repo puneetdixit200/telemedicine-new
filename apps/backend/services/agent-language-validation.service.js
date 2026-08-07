@@ -17,6 +17,9 @@ const SCRIPT_RANGES = {
   Latin: /[A-Za-z]/g
 };
 
+const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
+const TECHNICAL_REFERENCE_PATTERN = /(?:https?:\/\/|\/\/|\/book\?|\b(?:doctorId|appointmentId|fromAppointmentId|runId|traceId|actionId|messageDraftId)=)/i;
+
 function compact(value) {
   return String(value || '').normalize('NFC').trim();
 }
@@ -43,13 +46,22 @@ function languageValidationError(code, message) {
   return error;
 }
 
+function hasPatientFacingTechnicalReference(value, trustedNavigationPath = '') {
+  const text = compact(value);
+  if (!text) return false;
+  if (trustedNavigationPath && text.includes(String(trustedNavigationPath))) return true;
+  return TECHNICAL_REFERENCE_PATTERN.test(text) || UUID_PATTERN.test(text);
+}
+
 function validateLocalizedAgentDraft({ draft, language, quickRebookPath, availableSlotLabels = [], immutableTokens = [] }) {
   const resolved = resolvePatientLanguage(language);
   if (!LANGUAGE_DEFINITIONS[resolved.code]) throw languageValidationError('LOCALIZED_LANGUAGE_UNSUPPORTED', 'The requested patient language is not supported.');
   const title = compact(draft?.notificationTitle || draft?.title);
   const body = compact(draft?.patientMessage || draft?.notificationBody);
   if (!title || !body) throw languageValidationError('LOCALIZED_OUTPUT_EMPTY', 'Localized notification title and body are required.');
-  if (quickRebookPath && !body.includes(quickRebookPath)) throw languageValidationError('LOCALIZED_REBOOK_URL_CHANGED', 'The exact rebooking path must be preserved.');
+  if (hasPatientFacingTechnicalReference(`${title}\n${body}`, quickRebookPath)) {
+    throw languageValidationError('PATIENT_CONTENT_REFERENCE_FOUND', 'Patient-facing notification content must not expose URLs, route parameters, UUIDs, or internal references.');
+  }
   for (const slot of availableSlotLabels) {
     if (slot && !body.includes(String(slot))) throw languageValidationError('LOCALIZED_SLOT_CHANGED', 'Available appointment times must be preserved.');
   }
@@ -57,11 +69,17 @@ function validateLocalizedAgentDraft({ draft, language, quickRebookPath, availab
     throw languageValidationError('LOCALIZED_UNSAFE_CONTENT', 'The patient draft contains unsupported booking or medical language.');
   }
   if (title.length > 240 || body.length > 2400) throw languageValidationError('LOCALIZED_OUTPUT_TOO_LONG', 'The localized notification is too long.');
-  const checkText = withoutImmutableTokens(`${title} ${body}`, [quickRebookPath, ...immutableTokens, ...availableSlotLabels]);
+  const checkText = withoutImmutableTokens(`${title} ${body}`, [...immutableTokens, ...availableSlotLabels]);
   if (resolved.code !== 'en' && scriptRatio(checkText, resolved.script) < 0.12) {
     throw languageValidationError('LOCALIZED_WRONG_SCRIPT', `The draft does not contain enough ${resolved.script} text.`);
   }
   return { ...resolved, title, body, valid: true };
 }
 
-module.exports = { validateLocalizedAgentDraft, scriptRatio };
+module.exports = {
+  validateLocalizedAgentDraft,
+  scriptRatio,
+  hasPatientFacingTechnicalReference,
+  UUID_PATTERN,
+  TECHNICAL_REFERENCE_PATTERN
+};

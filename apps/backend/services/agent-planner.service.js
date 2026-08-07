@@ -2,6 +2,7 @@ const { aiGenerate, tryParseJson, getAiModel } = require('./ollama.service');
 const { validateMedicationFidelity } = require('./agent-policy.service');
 const { resolvePatientLanguage } = require('./patient-language.service');
 const { buildNoShowLocalizedTemplate } = require('../locales/agent-messages');
+const { getRebookCtaText } = require('../locales/agent-messages/rebook-cta');
 const { validateLocalizedAgentDraft } = require('./agent-language-validation.service');
 
 const GENERIC_WARNING =
@@ -16,6 +17,12 @@ function ensureSentence(value) {
   const text = clean(value);
   if (!text) return '';
   return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function normalizeDoctorName(value) {
+  return clean(value, 'Doctor')
+    .replace(/^\s*(?:dr\.?|doctor)\s+/i, '')
+    .trim() || 'Doctor';
 }
 
 function formatIstDateTime(value, locale = 'en-IN') {
@@ -36,7 +43,7 @@ function formatIstDateTime(value, locale = 'en-IN') {
 
 function buildNoShowFallback(context) {
   const patientName = clean(context.patient?.fullName, 'Patient');
-  const doctorName = clean(context.doctor?.fullName, 'Doctor');
+  const doctorName = normalizeDoctorName(context.doctor?.fullName);
   const language = context.patientLanguage || resolvePatientLanguage(context.patient);
   const slotLabels = (context.availableSlots || []).map((slot) => formatIstDateTime(slot.startAt, language.locale));
   const slotText = slotLabels.join(', ');
@@ -44,7 +51,7 @@ function buildNoShowFallback(context) {
     patientName,
     doctorName,
     slotList: slotText,
-    rebookUrl: context.quickRebookPath
+    rebookUrl: getRebookCtaText(language.code)
   });
 
   return {
@@ -118,6 +125,7 @@ function noShowActions(context, plan) {
           type: 'agent_no_show_recovery',
           quickRebookPath: context.quickRebookPath,
           offeredSlotIds: (context.availableSlots || []).map((slot) => slot.id),
+          availableSlotLabels: plan.availableSlotLabels || [],
           languageCode: plan.languageCode,
           languageName: plan.languageName,
           languageScript: plan.languageScript,
@@ -185,7 +193,7 @@ async function planNoShowRecovery(context, input = {}) {
   const language = context.patientLanguage || resolvePatientLanguage(context.patient);
   const promptContext = {
     patientDisplayName: context.patient?.fullName || 'Patient',
-    doctorName: context.doctor?.fullName || 'Doctor',
+    doctorName: normalizeDoctorName(context.doctor?.fullName),
     targetLanguageCode: language.code,
     targetLanguageName: language.name,
     targetLanguageNativeName: language.nativeName,
@@ -193,24 +201,24 @@ async function planNoShowRecovery(context, input = {}) {
     targetDirection: language.direction,
     appointmentStatus: context.appointment.status,
     availableSlotLabels: fallback.availableSlotLabels,
-    quickRebookPath: context.quickRebookPath,
+    hasRebookingAction: true,
     priorNoShowCount: context.priorNoShowCount
   };
-  const baseSystemPrompt = 'You are a care-coordination drafting assistant inside a telemedicine workflow. Return one valid JSON object with exactly these keys: adminSummary (string), notificationTitle (string), patientMessage (string), rationale (array of strings), safetyNotes (array of strings). Write notificationTitle and patientMessage entirely in the requested target language and preferred native script. Do not write patient-facing fields in English unless the target language is English. Names, URLs, immutable identifiers and exact date/time values may remain unchanged. Do not mix English headings into non-English patient-facing text. Do not diagnose, recommend treatment, or claim a slot has been booked. Ask the patient to confirm an offered time or use the exact rebooking link. Return valid JSON.';
+  const baseSystemPrompt = 'You are a care-coordination drafting assistant inside a telemedicine workflow. Return one valid JSON object with exactly these keys: adminSummary (string), notificationTitle (string), patientMessage (string), rationale (array of strings), safetyNotes (array of strings). Write notificationTitle and patientMessage entirely in the requested target language and preferred native script. Do not write patient-facing fields in English unless the target language is English. Patient-facing fields must not contain URLs, route paths, query parameters, UUIDs, database identifiers, appointment IDs, doctor IDs, run IDs, trace IDs, action IDs, or reference numbers. The application provides a separate trusted rebooking button, so tell the patient to use the button below. Names and exact date/time values may remain unchanged. Do not mix English headings into non-English patient-facing text. Do not diagnose, recommend treatment, or claim a slot has been booked. Return valid JSON.';
   const failureCategory = (error) => {
     if (!error) return 'invalid_schema';
     if (error.status === 504) return 'PROVIDER_TIMEOUT';
     if (error.status === 502) return 'PROVIDER_HTTP_ERROR';
     if (error.status === 503) return 'PROVIDER_UNAVAILABLE';
     if (error.code === 'LOCALIZED_WRONG_SCRIPT') return 'wrong_language_or_script';
-    if (error.code === 'LOCALIZED_REBOOK_URL_CHANGED') return 'rebooking_url_changed';
+    if (error.code === 'PATIENT_CONTENT_REFERENCE_FOUND') return 'patient_content_reference_found';
     if (error.code === 'LOCALIZED_SLOT_CHANGED') return 'slot_labels_changed';
     if (error.code === 'LOCALIZED_OUTPUT_EMPTY') return 'missing_required_fields';
     if (error.code === 'LOCALIZED_UNSAFE_CONTENT') return 'unsafe_content';
     return error.code || 'invalid_schema';
   };
   const buildPrompt = (correction) => correction
-    ? `${baseSystemPrompt} Your previous response failed validation for: ${correction}. Return one corrected JSON object only. Preserve the supplied rebooking URL and slot labels exactly.`
+    ? `${baseSystemPrompt} Your previous response failed validation for: ${correction}. Return one corrected JSON object only. Keep all patient-facing fields free of technical references and preserve the supplied slot labels exactly.`
     : baseSystemPrompt;
   const buildUserPrompt = (correction) => JSON.stringify(correction ? { ...promptContext, validationFailure: correction } : promptContext);
   const parseAndValidate = (text) => {
@@ -265,7 +273,7 @@ async function planNoShowRecovery(context, input = {}) {
 }
 
 function patientNameToken(patient) { return clean(patient?.fullName); }
-function doctorNameToken(doctor) { return clean(doctor?.fullName); }
+function doctorNameToken(doctor) { return normalizeDoctorName(doctor?.fullName); }
 
 async function planPostVisitFollowUp(context, input = {}) {
   const fallback = buildPostVisitFallback(context);
@@ -325,6 +333,7 @@ async function planPostVisitFollowUp(context, input = {}) {
 module.exports = {
   GENERIC_WARNING,
   ensureSentence,
+  normalizeDoctorName,
   formatIstDateTime,
   buildNoShowFallback,
   buildPostVisitFallback,
