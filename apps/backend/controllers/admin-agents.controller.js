@@ -4,6 +4,7 @@ const { derivePipelineState, validateTraceInvariants, validateRunInvariants, isH
 const { applyNoShowPresentationTimeline } = require('../services/agent-presentation.service');
 const { findInconsistentAgentStates, reconcileTrace } = require('../services/agent-state-reconciliation.service');
 const { approveAndRunAgent, startNoShowWorkflow, approveAndContinueNoShowWorkflow } = require('../services/agent-orchestrator.service');
+const { retryFailedNoShowExecution } = require('../services/agent-execution-retry.service');
 
 const TRACE_INCLUDE = {
   appointment: { select: { id: true, status: true, doctorId: true, patientId: true, startAt: true } },
@@ -70,6 +71,10 @@ function safeTrace(trace) {
   });
   const approvalAvailableAtMs = run?.approvalAvailableAt ? new Date(run.approvalAvailableAt).getTime() : null;
   const approvalRemainingMs = Number.isFinite(approvalAvailableAtMs) ? Math.max(0, approvalAvailableAtMs - Date.now()) : null;
+  const retryAvailable = run?.agentType === 'no_show_recovery'
+    && run?.status === 'failed'
+    && actions.some((action) => action.status === 'failed')
+    && (run?.messageDrafts || []).some((draft) => draft.status === 'approved' && !draft.deliveredAt);
 
   return {
     id: trace.id, correlationId: trace.correlationId, requestId: trace.requestId, traceKind: trace.traceKind, sourceTraceId: trace.sourceTraceId, agentType: trace.agentType,
@@ -96,6 +101,7 @@ function safeTrace(trace) {
       isTerminal: ['completed', 'partially_completed', 'failed', 'deduplicated', 'cancelled'].includes(trace.status),
       requiresHumanAction: trace.status === 'awaiting_approval' && approvalRemainingMs === 0,
       approvalReady: trace.status === 'awaiting_approval' && approvalRemainingMs === 0,
+      retryAvailable,
       approvalRemainingMs,
       minimumStageVisibleMs: 5000,
       linkedRunStatus: run?.status || null,
@@ -237,6 +243,14 @@ const adminAgentsController = {
       return res.status(200).json({ ok: true, run });
     } catch (error) {
       return res.status(Number(error.status || 500)).json({ ok: false, code: error.code || 'AGENT_WORKFLOW_FAILED', error: error.message || 'Agent workflow failed.', ...(error.run ? { run: error.run } : {}), ...(error.approvalAvailableAt ? { approvalAvailableAt: error.approvalAvailableAt, remainingMs: error.remainingMs } : {}) });
+    }
+  },
+  retry: async (req, res) => {
+    try {
+      const run = await retryFailedNoShowExecution({ runId: req.params.runId, actor: req.user });
+      return res.status(200).json({ ok: true, run });
+    } catch (error) {
+      return res.status(Number(error.status || 500)).json({ ok: false, code: error.code || 'AGENT_RETRY_FAILED', error: error.message || 'The failed workflow could not be retried safely.' });
     }
   },
   metrics: async (req, res) => res.json({ ok: true, range: req.query.range || '24h', ...(await overview()) }),
