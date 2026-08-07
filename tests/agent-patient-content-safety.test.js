@@ -40,9 +40,9 @@ describe('patient-facing no-show content safety', () => {
   });
 
   it('keeps every deterministic CTA reference-free', () => {
-    for (const [code, text] of Object.entries(REBOOK_CTA_TEXT)) {
-      expect(text, code).toBeTruthy();
-      expect(hasPatientFacingTechnicalReference(text, quickRebookPath), code).toBe(false);
+    for (const text of Object.values(REBOOK_CTA_TEXT)) {
+      expect(text).toBeTruthy();
+      expect(hasPatientFacingTechnicalReference(text, quickRebookPath)).toBe(false);
     }
   });
 });
