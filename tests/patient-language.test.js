@@ -1,15 +1,17 @@
 const { LANGUAGE_DEFINITIONS, resolvePatientLanguage } = require('../apps/backend/services/patient-language.service');
 const { TEMPLATES, buildNoShowLocalizedTemplate } = require('../apps/backend/locales/agent-messages');
+const { REBOOK_CTA_TEXT } = require('../apps/backend/locales/agent-messages/rebook-cta');
 const { validateLocalizedAgentDraft } = require('../apps/backend/services/agent-language-validation.service');
 
 describe('patient language and localized no-show drafts', () => {
   test.each(Object.keys(LANGUAGE_DEFINITIONS))('%s resolves and has a reviewed template', (code) => {
     const language = resolvePatientLanguage({ language: code });
-    const template = buildNoShowLocalizedTemplate(language, { patientName: 'Asha', doctorName: 'Ravi', slotList: '05 Aug', rebookUrl: '/book?appointment=1' });
+    const safeRebookText = REBOOK_CTA_TEXT[code] || REBOOK_CTA_TEXT.hi;
+    const template = buildNoShowLocalizedTemplate(language, { patientName: 'Asha', doctorName: 'Ravi', slotList: '05 Aug', rebookUrl: safeRebookText });
     expect(language.code).toBe(code);
     expect(TEMPLATES[code]).toBeDefined();
     expect(template.notificationTitle).toBeTruthy();
-    expect(template.notificationBody).toContain('/book?appointment=1');
+    expect(template.notificationBody).toContain(safeRebookText);
     expect(template.notificationBody).toContain('05 Aug');
   });
 
@@ -21,7 +23,7 @@ describe('patient language and localized no-show drafts', () => {
 
   test('invalid Tamil model output fails instead of being sent in English', () => {
     expect(() => validateLocalizedAgentDraft({
-      draft: { notificationTitle: 'Missed appointment', patientMessage: 'Please rebook your appointment at /book?appointment=1' },
+      draft: { notificationTitle: 'Missed appointment', patientMessage: 'Please choose a new appointment time using the button below.' },
       language: resolvePatientLanguage({ language: 'ta' }),
       quickRebookPath: '/book?appointment=1'
     })).toThrow('Tamil');
@@ -29,7 +31,7 @@ describe('patient language and localized no-show drafts', () => {
 
   test('valid Urdu output reports RTL', () => {
     const language = resolvePatientLanguage({ language: 'Urdu' });
-    const draft = buildNoShowLocalizedTemplate(language, { patientName: 'Asha', doctorName: 'Ravi', rebookUrl: '/book?appointment=1' });
+    const draft = buildNoShowLocalizedTemplate(language, { patientName: 'Asha', doctorName: 'Ravi', rebookUrl: REBOOK_CTA_TEXT.ur });
     expect(validateLocalizedAgentDraft({ draft, language, quickRebookPath: '/book?appointment=1' }).direction).toBe('rtl');
   });
 });
