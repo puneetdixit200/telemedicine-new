@@ -38,17 +38,35 @@ async function main() {
     SELECT trigger_name
     FROM information_schema.triggers
     WHERE event_object_schema = 'public'
-      AND (
-        (event_object_table = 'AgentRun'
-          AND trigger_name = 'AgentRun_enforce_approval_window')
-        OR
-        (event_object_table = 'AgentExecutionStep'
-          AND trigger_name = 'AgentExecutionStep_namespace_no_show_sequence')
-      )
+      AND event_object_table IN ('AgentRun', 'AgentExecutionStep')
+  `);
+
+  const constraints = await prisma.$queryRawUnsafe(`
+    SELECT constraint_name
+    FROM information_schema.table_constraints
+    WHERE table_schema = 'public'
+      AND table_name = 'AgentExecutionStep'
+      AND constraint_name = 'AgentExecutionStep_sequence_namespace_check'
+  `);
+
+  const namespaceViolations = await prisma.$queryRawUnsafe(`
+    SELECT
+      COUNT(*) FILTER (WHERE sequence BETWEEN 12 AND 99) AS ambiguous_sequences,
+      COUNT(*) FILTER (
+        WHERE sequence BETWEEN 1 AND 11
+          AND "stepKey" NOT IN (
+            'trigger', 'context', 'policy', 'deduplication', 'planning',
+            'validation', 'persistence', 'approval', 'execution',
+            'notification', 'completion'
+          )
+      ) AS detailed_steps_in_macro_namespace
+    FROM "AgentExecutionStep"
   `);
 
   const statusNames = new Set(statuses.map((row) => row.enumlabel));
   const triggerNames = new Set(triggers.map((row) => row.trigger_name));
+  const constraintNames = new Set(constraints.map((row) => row.constraint_name));
+  const namespaceRow = namespaceViolations[0] || {};
   const missing = [];
 
   if (requiredColumns.size) {
@@ -63,17 +81,33 @@ async function main() {
     missing.push('AgentRun trigger: AgentRun_enforce_approval_window');
   }
 
-  if (!triggerNames.has('AgentExecutionStep_namespace_no_show_sequence')) {
-    missing.push('AgentExecutionStep trigger: AgentExecutionStep_namespace_no_show_sequence');
+  if (!triggerNames.has('AgentExecutionStep_namespace_sequence')) {
+    missing.push('AgentExecutionStep trigger: AgentExecutionStep_namespace_sequence');
+  }
+
+  if (triggerNames.has('AgentExecutionStep_namespace_no_show_sequence')) {
+    missing.push('legacy AgentExecutionStep namespace trigger must be removed');
+  }
+
+  if (!constraintNames.has('AgentExecutionStep_sequence_namespace_check')) {
+    missing.push('AgentExecutionStep constraint: AgentExecutionStep_sequence_namespace_check');
+  }
+
+  if (Number(namespaceRow.ambiguous_sequences || 0) > 0) {
+    missing.push(`ambiguous AgentExecutionStep sequences: ${namespaceRow.ambiguous_sequences}`);
+  }
+
+  if (Number(namespaceRow.detailed_steps_in_macro_namespace || 0) > 0) {
+    missing.push(`detailed steps in macro namespace: ${namespaceRow.detailed_steps_in_macro_namespace}`);
   }
 
   if (missing.length) {
     throw new Error(
-      `Production schema is not compatible with this deployment. Missing ${missing.join('; ')}.`
+      `Production schema is not compatible with this deployment. Missing or invalid: ${missing.join('; ')}.`
     );
   }
 
-  console.log('[schema-check] Agent workflow schema, approval timing guard, and execution step sequence guard are compatible.');
+  console.log('[schema-check] Agent workflow schema, approval timing guard, and disjoint execution step namespaces are compatible.');
 }
 
 main()
