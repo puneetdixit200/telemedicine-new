@@ -6,8 +6,32 @@ This repository contains:
 - Role-based telemedicine workflows for patients, doctors, help workers, and admins
 - Real-time consultation support (video/audio/text signaling, chat, and shared call-end events)
 - Prescription, pharmacy, lab, reminders, and document workflows
-- AI-assisted draft tooling with review-required policy
+- Human-in-the-loop AI care-journey agents for no-show recovery and post-consultation follow-up
+- Durable agent traces, approval gates, localized fallback, idempotent execution, and admin observability
 - Azure-ready deployment flow and Capacitor mobile wrapper scaffolding
+
+## AI Agent Architecture at a Glance
+
+The AI agents are **controlled care-coordination workflows**, not autonomous doctors and not chatbots with unrestricted database/tool access.
+
+They combine trusted clinical context, deterministic policy, AI-assisted wording, deterministic fallback, human approval, fixed server-side tools, durable execution, and audit/observability.
+
+Why they exist:
+
+- recover missed consultations without staff manually rebuilding the same workflow each time
+- turn doctor-authored post-visit information into patient-friendly follow-up without changing medication instructions
+- support multilingual patient communication
+- remain useful when the AI provider is unavailable or returns invalid output
+- ensure patient-facing actions remain approval-controlled, idempotent, and auditable
+
+![AI Agent Architecture](docs/diagrams/ai-agent-architecture.svg)
+
+Detailed documentation:
+
+- [AI agents: purpose, architecture, workflows, safety, and testing](docs/AGENTIC_CARE_JOURNEY_AGENTS.md)
+- [Agent state machine and invariants](docs/AGENT_STATE_MACHINE.md)
+- [Editable Draw.io workflow diagrams](docs/diagrams/AI_AGENT_WORKFLOWS.drawio)
+- [Rendered no-show recovery flow](docs/diagrams/no-show-agent-flow.svg)
 
 ## 1. Product Scope
 
@@ -17,15 +41,17 @@ The system is designed for mixed-connectivity and rural-first usage patterns:
 - Delegated care support through explicit consent
 - Document and prescription handoff via secure access controls
 - Operations visibility with impact and readiness metrics
+- Human-reviewed AI care coordination for missed visits and post-visit follow-up
 
 ## 2. Technology Stack
 
 - Runtime: Next.js with Express compatibility APIs
 - Database: Supabase Postgres via Prisma ORM
 - Frontend: React + React Router inside a Next client boundary
-- Realtime: Supabase Realtime for consultation signaling and chat
+- Realtime: Supabase Realtime for consultation signaling, chat, and agent operations updates
 - Storage: Azure Blob Storage (with configurable local fallback)
 - Auth: Supabase Auth cookies plus app-local role/profile rows
+- AI: OpenRouter-backed structured planning with deterministic safe fallback
 - Security: Helmet, rate limiting, role authorization
 - Testing: Jest, Supertest, and Playwright E2E
 
@@ -45,6 +71,12 @@ The system is designed for mixed-connectivity and rural-first usage patterns:
 |  |- frontend/
 |     |- src/
 |- docs/
+|  |- diagrams/
+|  |  |- AI_AGENT_WORKFLOWS.drawio
+|  |  |- ai-agent-architecture.svg
+|  |  |- no-show-agent-flow.svg
+|  |- AGENTIC_CARE_JOURNEY_AGENTS.md
+|  |- AGENT_STATE_MACHINE.md
 |- prisma/
 |- scripts/
 |- tests/
@@ -121,6 +153,8 @@ Reference file: `.env.example`
 - `OPENROUTER_TIMEOUT_MS` (default `45000`)
 - `AI_RATE_LIMIT_PER_MINUTE` (default `40`)
 
+AI-provider success is not required for a safe workflow result. The agent layer validates model output and can use deterministic localized fallback when necessary.
+
 ### 6.5 Operations
 
 - `APPLICATIONINSIGHTS_CONNECTION_STRING` (optional)
@@ -181,6 +215,8 @@ Key middleware:
 - Role authorization
 - Structured error handling
 
+Agent orchestration is implemented as a separate bounded workflow layer. PostgreSQL is the source of truth; Realtime/polling only transport persisted workflow changes to the operations UI.
+
 ## 10. API Surface (High Level)
 
 Both prefixes are active:
@@ -206,6 +242,8 @@ Domain route groups:
 - `/reminders`
 - `/support`
 - `/ai`
+- `/agents`
+- `/admin/agents`
 - `/innovations`
 - `/medicines`
 
@@ -242,6 +280,7 @@ Authenticated routes:
 - `/labs/tests`
 - `/reminders`
 - `/ai-copilot`
+- `/admin/ai-agents` (admin)
 - `/doctor/patient-access` (doctor/admin)
 - `/innovations`
 - `/support/consents` (patient/help_worker)
@@ -253,7 +292,7 @@ Authenticated routes:
 - Booking flow with doctor, slot, mode, and family context
 - Appointment detail and lifecycle actions
 - Presence and call readiness helpers
-- No-show follow-up action flow
+- No-show recovery ticket trigger
 
 ### 12.2 Prescriptions and medicine workflows
 - Doctor prescription creation and update
@@ -266,13 +305,32 @@ Authenticated routes:
 - Lab catalog, orders, status progression, and report attach
 - PDF preview integration for reports and prescriptions
 
-### 12.4 AI draft workflows
+### 12.4 AI care-journey agents
+
+The repository contains two bounded AI-assisted agents:
+
+- **No-Show Recovery**: doctor creates a recovery ticket; administrator starts planning; the system loads trusted context, validates policy/deduplication/language, calls AI or deterministic fallback, persists an immutable localized draft, stops for admin approval, then executes fixed safety-gated tools. The patient notification is created only after the final delivery gate.
+- **Post-Consultation Follow-Up**: uses a doctor-authored prescription to create a patient-friendly summary, enforces medication fidelity, and proposes fixed summary/reminder actions.
+
+Agent safety principles:
+
+- AI drafts; backend policy decides what is allowed.
+- AI cannot select arbitrary tools.
+- Patient-facing side effects require human review/approval.
+- Deterministic fallback keeps the workflow safe when AI is unavailable/invalid.
+- Run/action/message idempotency protects against duplicate retries.
+- Patient-visible no-show text must not expose internal URLs, route parameters, or UUIDs.
+- Admin operations are driven by persisted database state/events.
+
+See [docs/AGENTIC_CARE_JOURNEY_AGENTS.md](docs/AGENTIC_CARE_JOURNEY_AGENTS.md) for the full design and [docs/diagrams/AI_AGENT_WORKFLOWS.drawio](docs/diagrams/AI_AGENT_WORKFLOWS.drawio) for editable diagrams.
+
+### 12.5 AI helper/draft workflows
 - Context endpoint and role-aware draft tools
 - Draft note, reminder text, referral summary, async reply support
 - Translation and helper guidance endpoints
 - Review-required metadata policy for outputs
 
-### 12.5 Innovation and care support
+### 12.6 Innovation and care support
 - Vitals and trends
 - Care plans and check-ins
 - Emergency escalation workflow
@@ -289,6 +347,7 @@ Primary models include:
 - Clinical records: `Document`, `Prescription`, `ConsultationVital`, `Referral`
 - Orders and tests: `PharmacyOrder`, `LabTestCatalog`, `LabOrder`, `LabOrderItem`
 - Care coordination: `ReminderJob`, `CareSupportLink`, `ConsentAudit`, `PatientAccessToken`
+- Agent workflow: `AgentRun`, `AgentAction`, `AgentMessageDraft`, `AgentExecutionTrace`, `AgentExecutionEvent`, `AgentExecutionStep`
 - Extended innovation set: care plans, emergencies, external consult threads, voice notes, second opinions
 
 Schema source of truth: `prisma/schema.prisma`
@@ -297,10 +356,14 @@ Schema source of truth: `prisma/schema.prisma`
 
 - Helmet CSP enabled
 - Global rate limiting enabled
-- Auth via secure cookie JWT
+- Auth via secure cookie JWT/Supabase-backed session integration
 - Role-gated endpoints and ACL checks
 - Structured request IDs in response headers
 - Readiness and liveness probes for orchestration
+- Agent admin operations protected by administrator authorization
+- Agent side effects use fixed tool allow-lists and idempotency
+- Patient messages are delivery-gated and persisted before UI presentation
+- Production schema verification guards critical agent workflow invariants
 
 ## 15. Testing and Quality
 
@@ -316,11 +379,19 @@ Current automated coverage includes:
 - Health endpoints
 - SPA fallback rendering
 - Unauthorized access baseline checks
+- Agent planning and deterministic fallback
+- Agent state/presentation rules
+- Multilingual patient draft validation
+- Patient notification behavior
+- Execution-step sequence guards and workflow reliability
 
 Extra QA reports and checklist outputs are available in `qa-reports/`.
 
 ## 16. Deployment and Operations Documentation
 
+- AI agents and workflow design: `docs/AGENTIC_CARE_JOURNEY_AGENTS.md`
+- Agent state machine: `docs/AGENT_STATE_MACHINE.md`
+- Editable Draw.io agent diagrams: `docs/diagrams/AI_AGENT_WORKFLOWS.drawio`
 - API reference (route matrix): `docs/API.md`
 - Azure deployment guide: `azure-deploy.md`
 - Production readiness gates: `docs/production-readiness.md`
@@ -360,6 +431,13 @@ Current scope is wrapper readiness for the web app bundle (not native feature pa
 - Confirm `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are available to the browser
 - Confirm Supabase Realtime is reachable from the deployed app
 
-### 18.5 AI endpoint fallback behavior
-- If `OPENROUTER_API_KEY` and `OLLAMA_BASE_URL` are unset/unreachable, AI endpoints use fallback-safe behavior
-- Check API response metadata for fallback indicators
+### 18.5 AI provider fallback behavior
+- If OpenRouter/Ollama is unavailable or model output fails validation, the bounded agent workflow can use deterministic fallback where supported
+- Check persisted run/trace metadata for provider, model, fallback, and validation state
+- A valid deterministic fallback is a safe degraded result, not automatically a failed workflow
+
+### 18.6 Agent workflow stuck or failed
+- Inspect `/admin/ai-agents`
+- Check canonical run/trace/action state rather than relying only on UI animation
+- Use the admin integrity view/endpoint for state consistency checks
+- Use safe retry only for eligible failures where idempotency guarantees no duplicate patient side effect

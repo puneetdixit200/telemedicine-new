@@ -1,460 +1,571 @@
 # Agentic Care Journey Agents
 
-This document explains the two AI-assisted care coordination agents implemented in this repository:
+This document explains what the AI agents in this telemedicine platform do, why they are needed, how they are controlled, and how the two current workflows operate.
 
-- No-Show Recovery Agent
-- Post-Consultation Follow-Up Agent
+The short version: these agents are **not autonomous doctors and not chatbots with database access**. They are controlled workflow engines that use AI only for bounded planning and patient-friendly wording, while the application owns authorization, clinical rules, state transitions, retries, tool execution, approval, and delivery.
 
-Both agents are approval-first. They draft plans and propose fixed server-defined actions, but they do not write anything patient-facing until a doctor or administrator approves and executes the action.
+## Diagrams
 
-## Core Rules
+Rendered diagrams are available directly in GitHub:
 
-The implementation follows these safety rules:
+- [AI agent architecture](diagrams/ai-agent-architecture.svg)
+- [No-show recovery workflow](diagrams/no-show-agent-flow.svg)
 
-- The agents do not diagnose patients.
-- The agents do not create new treatment instructions.
-- The agents do not add, remove, or modify medicines.
-- The agents do not change dosage, frequency, or duration.
-- Every patient-facing write requires doctor or administrator approval.
-- The browser never receives AI provider keys, Supabase service keys, database URLs, or JWT secrets.
-- The system uses only server-defined tools.
-- Every run and action is idempotent so retrying the same request does not duplicate work.
-- AI failure does not stop the workflow; deterministic fallback plans are generated.
-- Queued messages are only marked as queued inside the app. The system does not claim WhatsApp or SMS delivery.
+Editable Draw.io source:
 
-## Main Files
+- [`docs/diagrams/AI_AGENT_WORKFLOWS.drawio`](diagrams/AI_AGENT_WORKFLOWS.drawio)
 
-Backend:
+The Draw.io file contains three pages:
 
-- `apps/backend/services/agent-context.service.js`
-- `apps/backend/services/agent-planner.service.js`
-- `apps/backend/services/agent-policy.service.js`
-- `apps/backend/services/agent-actions.service.js`
-- `apps/backend/services/agent-orchestrator.service.js`
-- `apps/backend/services/patient-notifications.service.js`
-- `apps/backend/controllers/agents.controller.js`
-- `apps/backend/routes/agents.routes.js`
-- `apps/backend/controllers/patients.controller.js`
-- `apps/backend/routes/patients.routes.js`
+1. Agent Architecture
+2. No-Show Recovery
+3. Post-Visit Follow-Up
 
-Frontend:
+## Why Is an AI Agent Needed?
 
-- `apps/frontend/src/components/AgentPlanPanel.jsx`
-- `apps/frontend/src/components/PatientNotificationBanner.jsx`
-- `apps/frontend/src/App.jsx`
-- `apps/frontend/src/styles.css`
+A normal telemedicine application records appointments, prescriptions, documents, and messages. The difficult part is what happens **between** those records.
 
-Database:
+Examples:
 
-- `prisma/schema.prisma`
-- `prisma/migrations/20260729000000_add_agent_workflows/migration.sql`
+- A patient misses a consultation. Someone must notice it, check whether recovery is appropriate, identify available slots, prepare a respectful message in the patient's language, obtain approval, and create a safe rebooking path.
+- A consultation is completed. Someone must convert the doctor-authored prescription into a patient-friendly explanation without changing medication instructions, then create the appropriate follow-up/reminder actions.
+- Staff should not have to manually repeat the same coordination work for every appointment.
+- AI provider failures must not make the care-coordination workflow disappear.
+- Patient-facing automation must remain auditable and under human control.
 
-Tests:
+The agents solve this coordination problem.
 
-- `tests/agent-planner.test.js`
-- `tests/agents.integration.test.js`
-- `tests/patient-notifications.test.js`
+They combine:
 
-## Database Model
+- trusted database context
+- deterministic policy checks
+- AI-assisted drafting
+- deterministic fallback
+- human approval
+- fixed server-side tools
+- durable workflow state
+- idempotency and retry protection
+- observability through the admin operations console
 
-The agents store their workflow state in two Prisma models.
+This gives the application useful automation without giving the language model unrestricted control.
 
-### AgentRun
+## What Makes This an Agent Instead of a Chatbot?
 
-`AgentRun` is one complete agent workflow for one appointment.
+A chatbot mainly accepts text and returns text.
 
-Important fields:
+These agents perform a multi-step goal-oriented workflow:
 
-- `agentType`: `no_show_recovery` or `post_visit_follow_up`
-- `status`: workflow state, such as `awaiting_approval`, `executing`, `completed`, or `failed`
-- `dedupeKey`: unique key that prevents duplicate runs for the same appointment state
-- `appointmentId`: appointment being handled
-- `requestedById`: doctor or admin who requested the plan
-- `input`: user preference input, such as preferred language
-- `context`: server-loaded appointment, patient, doctor, prescription, and slot context
-- `plan`: generated AI or fallback plan
-- `summary`: short human-readable summary
-- `completedAt`: set when all actions finish or fail
+1. Observe a clinical workflow event.
+2. Load trusted context from the database.
+3. Check policy and authorization.
+4. Decide whether the workflow is eligible.
+5. Ask the AI provider for a constrained structured draft.
+6. Validate the draft.
+7. Fall back deterministically if the provider fails or produces unsafe/invalid output.
+8. Persist a plan and proposed actions.
+9. Stop for human approval.
+10. Execute only pre-defined backend tools.
+11. Verify the final delivery gate.
+12. Persist the patient-facing result exactly once.
+13. Record trace and execution events for operations/audit visibility.
 
-### AgentAction
+The model is therefore one component inside a larger controlled agent system. It is not the authority for clinical state or side effects.
 
-`AgentAction` is one proposed server-side action inside an agent run.
+## Current Agents
 
-Important fields:
+The repository currently contains two care-journey agents:
 
-- `toolName`: fixed backend tool name
-- `title` and `description`: shown in the approval UI
-- `arguments`: server-proposed tool arguments
-- `riskLevel`: approval risk label
-- `requiresApproval`: true for patient-facing actions
-- `status`: `proposed`, `approved`, `rejected`, `executing`, `completed`, or `failed`
-- `idempotencyKey`: unique key used by tools to avoid duplicate writes
-- `approvedById`, `approvedAt`, `executedAt`: audit fields
-- `result` and `error`: execution outcome
+### 1. No-Show Recovery Agent
 
-## Shared Workflow
+Purpose: recover a missed consultation safely and help the patient rebook.
 
-Both agents follow the same high-level flow.
+The agent can:
 
-1. A doctor or administrator opens an appointment.
-2. The frontend shows `AgentPlanPanel` when the appointment context supports an agent action.
-3. The user clicks the relevant agent button.
-4. The frontend calls the backend plan API.
-5. The backend loads trusted context from the database.
-6. Policy checks confirm the actor is allowed to generate a plan.
-7. The planner asks the existing AI provider service for a JSON draft.
-8. If AI is unavailable or returns invalid output, the deterministic fallback creates the plan.
-9. The backend stores an `AgentRun` and proposed `AgentAction` rows.
-10. The doctor or admin reviews the plan and selected actions in `AgentPlanPanel`.
-11. The doctor or admin approves or rejects actions.
-12. Approved actions are executed by fixed server-side tools.
-13. The patient-facing message is saved as a queued in-app message.
-14. The patient sees the message through `PatientNotificationBanner`.
-15. The patient can dismiss the notification, which marks metadata on the queued message.
+- create a recovery ticket after a doctor marks an appointment as no-show
+- load appointment, patient, doctor, no-show, and future-slot context
+- resolve the patient's saved language
+- draft a localized recovery message
+- use a deterministic localized fallback if AI output is invalid or unavailable
+- propose the fixed `queue_no_show_recovery_message` action
+- wait for administrator approval
+- run final safety, language, allow-list, and idempotency checks
+- queue exactly one approved in-app patient notification
+- expose a trusted rebooking action without placing raw internal URLs or UUIDs in the patient-visible message
 
-## No-Show Recovery Agent
+The agent does **not**:
 
-### Purpose
+- diagnose the patient
+- recommend treatment
+- invent appointment availability
+- book a slot without the patient choosing it
+- bypass administrator approval
+- expose internal route parameters in the notification body
+- directly send WhatsApp/SMS while claiming external delivery
 
-The No-Show Recovery Agent helps staff recover a missed consultation. It drafts a respectful message and provides a quick rebooking path. It does not rebook the appointment by itself.
+### 2. Post-Consultation Follow-Up Agent
 
-### Trigger
+Purpose: turn an existing doctor-authored prescription into an easier patient follow-up while preserving the clinical instructions exactly.
 
-The doctor or admin clicks the no-show follow-up action from an appointment screen.
+The agent can:
 
-Backend endpoint:
+- load the completed consultation and prescription
+- ask AI for a patient-friendly explanation
+- verify medication name, dosage, frequency, and duration against the original prescription
+- fall back to deterministic prescription-based wording if AI output is invalid
+- propose `queue_post_visit_summary`
+- propose `schedule_refill_reminder`
+- execute only approved actions through fixed backend tools
 
-```text
-POST /api/agents/no-show/:appointmentId/plan
-POST /api/v1/agents/no-show/:appointmentId/plan
-```
+The agent does **not**:
 
-### Context Loaded
+- add a medicine
+- remove a medicine
+- change dosage
+- change frequency
+- change duration
+- invent a diagnosis
+- change the doctor's follow-up timing
 
-`loadNoShowContext()` loads:
+## Architecture
 
-- appointment details
-- patient details
-- doctor details
-- available future slots
-- prior no-show count
-- quick rebooking path
+![AI Agent Architecture](diagrams/ai-agent-architecture.svg)
 
-If the appointment is still `booked`, the orchestrator marks it as `no_show` and cancels scheduled reminders for that appointment before creating the recovery plan.
+The architecture intentionally separates intelligence from authority.
 
-### Planning
+### AI provider
 
-`planNoShowRecovery()` asks the existing OpenRouter/Ollama-compatible provider through `aiGenerate()` for JSON containing:
+The planner currently uses the configured OpenRouter path, with the production model set to `openai/gpt-oss-120b`.
 
-- summary
-- patient recovery message
-- rationale
-- safety notes
+AI is used for:
 
-The prompt tells the model:
+- structured planning
+- patient-friendly phrasing
+- multilingual wording
+- concise rationale/safety notes for human review
 
-- do not diagnose
-- do not provide treatment
-- use only supplied appointment and slot context
-- do not claim a slot is booked
-- ask the patient to confirm or use the rebooking path
+AI is **not** used to authorize requests, choose arbitrary tools, mutate clinical records directly, or decide whether approval can be skipped.
 
-### Deterministic Fallback
+### Orchestrator
 
-If the AI provider fails, times out, or returns invalid JSON, `buildNoShowFallback()` creates a safe message using:
+`agent-orchestrator.service.js` coordinates the lifecycle:
 
-- patient name
-- doctor name
-- available appointment slot labels
-- quick rebooking path
+- ticket/run creation
+- context loading
+- policy validation
+- deduplication
+- planning
+- draft persistence
+- action creation
+- state transitions
+- failure handling
 
-The fallback sets:
+### Policy and validation
 
-```text
-fallbackUsed: true
-model: deterministic-fallback
-```
+Policy services enforce deterministic rules around:
 
-### Proposed Action
+- allowed actors
+- eligible appointment state
+- no-show occurrence semantics
+- medication fidelity
+- patient-language validity
+- safe patient-facing content
+- server-defined tool allow-list
 
-The agent proposes one action:
+### Fixed tools
+
+The model never invents a function name and gets it executed.
+
+The backend exposes only known tool implementations such as:
 
 ```text
 queue_no_show_recovery_message
-```
-
-This action saves an outbound message in the patient consultation thread with `deliveryStatus = queued`.
-
-It does not send WhatsApp or SMS. It only queues an in-app patient-facing message after approval.
-
-## Post-Consultation Follow-Up Agent
-
-### Purpose
-
-The Post-Consultation Follow-Up Agent turns a doctor-authored prescription into a patient-friendly follow-up summary and schedules or refreshes a reminder based on existing prescription data.
-
-It never changes prescription content.
-
-### Trigger
-
-The doctor or admin clicks the post-visit follow-up action after a consultation has a prescription.
-
-Backend endpoint:
-
-```text
-POST /api/agents/post-visit/:appointmentId/plan
-POST /api/v1/agents/post-visit/:appointmentId/plan
-```
-
-### Context Loaded
-
-`loadPostVisitContext()` loads:
-
-- appointment details
-- patient details
-- doctor details
-- prescription
-- prescription medicines
-- follow-up date, if present
-
-The policy layer requires a completed consultation and a doctor-authored prescription before this agent can create a plan.
-
-### Planning
-
-`planPostVisitFollowUp()` asks the existing AI provider for a JSON draft that simplifies doctor-authored information.
-
-The prompt tells the model:
-
-- do not diagnose
-- do not recommend new treatment
-- do not add medicines
-- do not remove medicines
-- do not modify dosage, frequency, duration, diagnosis, or follow-up timing
-- all output is only a draft requiring clinician approval
-
-### Medication Fidelity Check
-
-After AI output is parsed, the backend merges only the plain-language explanation with the original prescription items.
-
-`validateMedicationFidelity()` verifies that each generated medicine entry still matches the original:
-
-- name
-- dosage
-- frequency
-- duration
-
-If any value changes, planning falls back to the deterministic plan.
-
-### Deterministic Fallback
-
-If AI is unavailable or unsafe, `buildPostVisitFallback()` creates a summary from the prescription exactly as written.
-
-For each medicine it creates:
-
-```text
-Take [name] exactly as prescribed: [dosage], [frequency], for [duration].
-```
-
-The fallback includes a generic urgent-care warning and sets:
-
-```text
-fallbackUsed: true
-model: deterministic-fallback
-```
-
-### Proposed Actions
-
-The agent proposes two actions:
-
-```text
 queue_post_visit_summary
 schedule_refill_reminder
 ```
 
-`queue_post_visit_summary` saves the approved follow-up summary as a queued patient-facing in-app message.
+Action arguments are persisted and later checked by the backend before execution.
 
-`schedule_refill_reminder` refreshes the existing refill reminder job using existing prescription and appointment data. It does not invent new prescription timing.
+### Database as source of truth
 
-## Approval APIs
+PostgreSQL stores the canonical workflow state.
 
-After a plan is created, these routes manage review and execution:
+Important persisted records include:
 
-```text
-GET  /api/agents/runs/:runId
-POST /api/agents/runs/:runId/approve
-POST /api/agents/runs/:runId/reject
-POST /api/agents/runs/:runId/execute
+- `AgentRun`
+- `AgentAction`
+- `AgentMessageDraft`
+- `AgentExecutionTrace`
+- `AgentExecutionEvent`
+- `AgentExecutionStep`
+- final in-app consultation messages
 
-GET  /api/v1/agents/runs/:runId
-POST /api/v1/agents/runs/:runId/approve
-POST /api/v1/agents/runs/:runId/reject
-POST /api/v1/agents/runs/:runId/execute
-```
+Supabase Realtime and polling transport changes to the UI, but they do not become the workflow authority.
 
-Expected frontend sequence:
+## No-Show Recovery Workflow
 
-1. Create a plan.
-2. Show proposed actions to doctor or admin.
-3. Approve selected action IDs.
-4. Execute approved actions.
-5. Refresh the run to show completed or failed action status.
+![No-Show Recovery Flow](diagrams/no-show-agent-flow.svg)
 
-## Patient Notification APIs
+The live workflow is deliberately split into **two human gates**.
 
-Patients see approved queued messages through:
+### Phase 1: Doctor creates a recovery ticket
+
+The assigned doctor uses the appointment action:
 
 ```text
-GET /api/patients/notifications
-POST /api/patients/notifications/:messageId/dismiss
+Mark No-show + Follow-up
 ```
 
-Only logged-in patients can call these routes.
+At this point the system creates or reuses a no-show recovery ticket/run and trace.
 
-The notification service returns queued outbound messages that:
+The AI workflow has not yet started.
 
-- belong to the current patient
-- have a non-empty body
-- are not dismissed
-- have `deliveryStatus = queued`
+The patient has not been notified.
 
-Dismissal stores `patientDismissedAt` in message metadata. It does not delete the message.
+Repeated requests for the same no-show occurrence reuse the existing run instead of creating another planning call/action/message.
 
-## Frontend Behavior
+### Phase 2: Administrator starts planning
 
-### AgentPlanPanel
+In the admin AI Agent Operations view, a new no-show ticket initially waits for administrator start.
 
-`AgentPlanPanel` is the doctor/admin approval interface.
-
-It shows:
-
-- plan summary
-- whether deterministic fallback was used
-- model name
-- proposed actions
-- action risk level
-- approval and rejection controls
-- execution state
-
-The panel intentionally does not expose arbitrary tool execution. It only sends action IDs for backend-defined actions already saved in `AgentAction`.
-
-### PatientNotificationBanner
-
-`PatientNotificationBanner` appears for patient accounts when queued notifications exist.
-
-It:
-
-- stays centered in the viewport
-- shows the latest queued care update
-- links to the related appointment when available
-- supports dismissing the notification
-- supports minimizing the notification
-- does not claim external delivery
-
-## Idempotency and Concurrency
-
-The implementation has two layers of duplicate protection.
-
-### AgentRun Dedupe
-
-Each run has a unique `dedupeKey`.
-
-No-show key format:
+Administrator route family:
 
 ```text
-no_show_recovery:[appointmentId]:[appointmentUpdatedAtEpoch]
+POST /api/admin/agents/runs/:runId/start
+POST /api/v1/admin/agents/runs/:runId/start
 ```
 
-Post-visit key format:
+Only an administrator can use the admin agent routes.
+
+After Start, the workflow performs the planning stages:
 
 ```text
-post_visit_follow_up:[appointmentId]:[prescriptionUpdatedAtEpoch]
+Triggered
+Context loaded
+Policy validated
+Deduplication checked
+AI model called
+Output validated
+Plan saved
+Awaiting approval
 ```
 
-If the same plan request is retried for the same state, the existing `AgentRun` is returned.
+The dashboard presentation deliberately makes persisted stages visible sequentially. The presentation timeline must never be confused with authorization: the browser can display a countdown, but it cannot tell the backend that approval/delivery is allowed.
 
-### AgentAction Claiming
+### Phase 3: AI planning and fallback
 
-Execution uses an atomic update:
+The backend loads trusted context, including:
+
+- appointment
+- patient
+- doctor
+- no-show occurrence
+- available future slots
+- patient language
+- safe internal rebooking metadata
+
+The model is asked for structured output containing administrator-facing information and patient-facing localized text.
+
+Patient-facing output is validated before it can become an approval-ready draft.
+
+Validation includes checks for:
+
+- required localized title/body
+- target script/language
+- slot fidelity
+- unsafe booking claims
+- medical advice patterns
+- raw URLs
+- route parameters
+- UUID/internal references
+
+If model output fails validation, the system performs the controlled corrective path. If valid output still cannot be obtained, a deterministic localized template is used.
+
+A fallback is therefore a **safe degraded success**, not automatically a workflow failure.
+
+### Phase 4: Administrator reviews exact draft
+
+The workflow stops at the approval gate.
+
+The admin sees the exact persisted patient-facing draft plus operational metadata such as:
+
+- language
+- provider/model
+- whether fallback was used
+- proposed action
+- risk information
+- draft/content hash
+
+The patient still has no notification.
+
+The admin can approve and continue, or reject.
+
+### Phase 5: Final approved execution
+
+After approval, the system locks the approved content and runs final execution checks such as:
+
+- approval verification
+- draft/content-hash verification
+- patient-language revalidation
+- localized-message verification
+- tool allow-list verification
+- safety validation
+- delivery preparation
+- idempotency/concurrency protection
+- final delivery gate
+
+Only after these checks and the final workflow gate may the application create the patient message.
+
+### Phase 6: Patient result
+
+The final notification is stored as an in-app patient message.
+
+The notification UI uses patient-language metadata and keeps technical navigation separate from visible prose.
+
+A rebooking path may exist in trusted message metadata, but the patient-facing text must not display raw values such as:
 
 ```text
-status = approved -> executing
+/book?doctorId=...
+fromAppointmentId=...
+runId=...
+traceId=...
+<UUID>
 ```
 
-Only the request that successfully claims the action executes it. Concurrent retries skip actions already claimed or completed.
+The patient instead receives a normal localized CTA such as “Rebook appointment.”
 
-The action tools also use `idempotencyKey` metadata so repeated execution does not create duplicate queued messages or reminder jobs.
+Visibility and dismissal events remain auditable. Dismissing a notification does not delete the original message record.
 
-## Security and Policy
+## Post-Consultation Follow-Up Workflow
 
-Policy checks live in `agent-policy.service.js`.
+The post-visit agent begins from a completed consultation with a doctor-authored prescription.
 
-They enforce:
+High-level flow:
 
-- only doctors and admins can create or approve agent runs
-- only allowed appointment states can trigger each agent
-- only server-defined tool names are executable
-- medication content must match the doctor-authored prescription
+```text
+Completed consultation
+        ↓
+Load prescription context
+        ↓
+AI creates patient-friendly draft
+        ↓
+Medication fidelity validation
+        ↓
+Valid? ── no ──> deterministic prescription-based fallback
+        ↓ yes
+Persist plan + proposed actions
+        ↓
+Human review / approval
+        ↓
+Fixed server tools
+        ↓
+Approved follow-up + reminder behavior
+```
 
-The frontend can request approval or execution, but the backend is the source of truth for permissions, allowed tools, and action arguments.
+The key rule is that AI may explain the prescription, but the prescription remains the authority.
 
-## How To Test Locally
+## Human-in-the-Loop Safety
 
-Run the standard verification commands:
+Human approval exists because these workflows create patient-facing side effects.
+
+For the no-show operations workflow, administrator-only routes are protected by authentication and `roleRequired('admin')`.
+
+The human is reviewing a persisted draft, not an untracked live model response.
+
+This provides:
+
+- accountability
+- predictable behavior
+- auditability
+- protection from model hallucination
+- protection from accidental external side effects
+
+## Idempotency and Duplicate Protection
+
+Agent workflows are designed so network retries and double-clicks do not become duplicate patient messages.
+
+Protection exists at multiple levels:
+
+- run-level dedupe key
+- no-show occurrence/version semantics
+- action-level idempotency key
+- atomic execution claims
+- message-level uniqueness/idempotency
+- disjoint execution-step sequence namespaces
+- database constraints/triggers as defense in depth
+
+The presentation pipeline uses macro sequence values `1-11`. Detailed execution steps use a separate `101+` namespace so they cannot collide with presentation rows.
+
+## Recovery and Retry
+
+A failure should be visible and recoverable without repeating a patient side effect.
+
+The admin operations layer includes a safe retry path for eligible no-show execution failures.
+
+Retry logic must first confirm that recovery is safe. It must not blindly recreate actions or patient messages.
+
+The application also contains state reconciliation/integrity support for workflow relationships and stale-state detection.
+
+## Observability
+
+The admin AI Agent Operations Center is an operational view of persisted backend truth.
+
+It exposes items such as:
+
+- trace/run state
+- active pipeline stage
+- provider/model/fallback information
+- proposed/approved/executing actions
+- event history
+- execution steps
+- delivery result
+- integrity information
+
+Realtime improves responsiveness, while polling provides a fallback. Neither one changes the underlying workflow state by itself.
+
+## Why the Presentation Pipeline Has Visible Stage Timing
+
+The operations UI deliberately makes stages visible long enough for humans to understand what is happening during demonstrations and review.
+
+Two separate concepts are kept:
+
+- **actual backend timing**: when work really happened
+- **presentation timing**: how long a persisted workflow stage remains visible in the operations UI
+
+Presentation timing must never falsify actual event timestamps and must never become the authorization mechanism for tool execution or patient delivery.
+
+## Security Boundary
+
+The browser never receives:
+
+- OpenRouter API key
+- Supabase service-role key
+- database URL
+- internal worker secret
+- unrestricted tool executor
+
+The AI model cannot:
+
+- grant itself permissions
+- approve its own action
+- select an arbitrary backend function
+- bypass the delivery gate
+- directly update the database
+- create an external delivery channel by itself
+
+## Main Implementation Files
+
+### Backend
+
+- `apps/backend/services/agent-context.service.js`
+- `apps/backend/services/agent-planner.service.js`
+- `apps/backend/services/agent-policy.service.js`
+- `apps/backend/services/agent-language-validation.service.js`
+- `apps/backend/services/patient-language.service.js`
+- `apps/backend/services/agent-actions.service.js`
+- `apps/backend/services/agent-orchestrator.service.js`
+- `apps/backend/services/agent-presentation.service.js`
+- `apps/backend/services/agent-state-machine.service.js`
+- `apps/backend/services/agent-state-reconciliation.service.js`
+- `apps/backend/services/agent-execution-retry.service.js`
+- `apps/backend/services/agent-observability.service.js`
+- `apps/backend/services/patient-notifications.service.js`
+- `apps/backend/controllers/agents.controller.js`
+- `apps/backend/controllers/admin-agents.controller.js`
+- `apps/backend/routes/agents.routes.js`
+- `apps/backend/routes/admin-agents.routes.js`
+
+### Frontend
+
+- `apps/frontend/src/pages/AdminAgentOperationsPage.jsx`
+- `apps/frontend/src/components/AgentPlanPanel.jsx`
+- `apps/frontend/src/components/PatientNotificationBanner.jsx`
+- `apps/frontend/src/components/patientNotificationLabels.js`
+
+### Database
+
+- `prisma/schema.prisma`
+- `prisma/migrations/20260729000000_add_agent_workflows/`
+- `prisma/migrations/20260802000100_agent_execution_observability/`
+- `prisma/migrations/20260805000100_admin_start_gated_no_show/`
+- `prisma/migrations/20260805000200_enforce_agent_presentation_timing/`
+- `prisma/migrations/20260807000100_harden_agent_step_namespace/`
+
+## Draw.io: How to Edit the Diagrams
+
+The editable source is:
+
+```text
+docs/diagrams/AI_AGENT_WORKFLOWS.drawio
+```
+
+### Option A: diagrams.net
+
+1. Open <https://app.diagrams.net/>.
+2. Choose **Device** or your preferred storage provider.
+3. Select **File → Open From → Device**.
+4. Open `AI_AGENT_WORKFLOWS.drawio` from the repository.
+5. Use the page tabs at the bottom to switch between:
+   - Agent Architecture
+   - No-Show Recovery
+   - Post-Visit Follow-Up
+6. Edit shapes/connectors.
+7. Save the `.drawio` source back into the repository.
+8. Export important pages as SVG using **File → Export as → SVG**.
+9. Replace the matching files under `docs/diagrams/` so GitHub documentation stays visually up to date.
+
+### Option B: VS Code
+
+Install a Draw.io/diagrams.net extension that supports `.drawio` files, then open:
+
+```text
+docs/diagrams/AI_AGENT_WORKFLOWS.drawio
+```
+
+The repository keeps the editable source and rendered SVGs together so future architecture changes can update both.
+
+### Diagram conventions used here
+
+- Blue: clinician/AI-generation steps
+- Yellow: human gates or fallback/waiting states
+- Purple: orchestration/state infrastructure
+- Red: safety/policy validation
+- Green: approved tools and patient-visible results
+- Grey: persisted infrastructure/source of truth
+
+When the agent implementation changes, update the diagrams in the same pull request as the code whenever the user journey or safety boundary changes.
+
+## Testing
+
+Useful verification commands:
 
 ```bash
 npx prisma format
 npx prisma validate
 npx prisma generate
-npx prisma migrate status
 npm run lint
 npm test
 npm run build
 npm run test:e2e
 ```
 
-Useful focused tests:
+Focused tests cover planning, presentation, localization, state transitions, notification behavior, deduplication, execution-step sequencing, and integration behavior.
 
-```bash
-npm test -- tests/agent-planner.test.js
-npm test -- tests/agents.integration.test.js
-npm test -- tests/patient-notifications.test.js
+## Summary
+
+The purpose of these AI agents is not to replace the doctor.
+
+Their purpose is to make repetitive care coordination reliable:
+
+```text
+Clinical event
+   + trusted context
+   + deterministic policy
+   + AI-assisted wording
+   + deterministic fallback
+   + human approval
+   + fixed tools
+   + durable execution
+   = safer automated follow-up
 ```
 
-## How To See The Agents Working
-
-### Doctor/Admin Side
-
-1. Log in as a doctor or administrator.
-2. Open an appointment.
-3. For a missed appointment, click the no-show follow-up action.
-4. Review the generated plan in `AgentPlanPanel`.
-5. Approve the proposed action.
-6. Execute approved actions.
-7. Confirm the action status becomes completed.
-
-For post-consultation follow-up:
-
-1. Open a completed consultation with a prescription.
-2. Click the post-visit follow-up agent action.
-3. Review the summary and reminder actions.
-4. Approve and execute selected actions.
-
-### Patient Side
-
-1. Log in as the patient linked to the appointment.
-2. Open the dashboard.
-3. The centered care update notification appears if an approved queued message exists.
-4. Click `Open appointment` to view the appointment.
-5. Click `Dismiss` to hide the notification.
-
-## Deployment Notes
-
-The MVP is compatible with the existing Vercel and Supabase path:
-
-- Prisma migration is SQL-based and works with Supabase Postgres.
-- Runtime uses the existing Node/Next/Express compatibility API.
-- No separate Python service is required.
-- No cron is required for the MVP.
-- AI provider secrets stay server-side.
-- Fallback planning works without OpenRouter/Ollama availability.
-
+That is the core design principle of the agent system in this repository.

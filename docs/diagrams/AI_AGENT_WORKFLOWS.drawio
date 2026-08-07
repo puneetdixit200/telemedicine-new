@@ -1,0 +1,96 @@
+<mxfile host="app.diagrams.net" modified="2026-08-08T00:00:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
+  <diagram id="architecture" name="1 - Agent Architecture">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Telemedicine AI Agent Architecture" style="text;html=1;fontSize=24;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="300" y="20" width="560" height="40" as="geometry"/></mxCell>
+        <mxCell id="doctor" value="Doctor&#xa;Marks no-show / completes visit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="130" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="admin" value="Administrator&#xa;Starts workflow + approves" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="290" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="patient" value="Patient&#xa;Receives localized care update" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="540" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="orchestrator" value="Agent Orchestrator&#xa;Durable workflow + state machine" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=15;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="350" y="200" width="240" height="90" as="geometry"/></mxCell>
+        <mxCell id="policy" value="Policy + Safety Layer&#xa;Authorization&#xa;language validation&#xa;medication fidelity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;" vertex="1" parent="1"><mxGeometry x="350" y="340" width="240" height="110" as="geometry"/></mxCell>
+        <mxCell id="ai" value="OpenRouter AI&#xa;openai/gpt-oss-120b&#xa;Draft wording / plan" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="1"><mxGeometry x="700" y="120" width="220" height="100" as="geometry"/></mxCell>
+        <mxCell id="fallback" value="Deterministic Fallback&#xa;Localized safe template&#xa;Used when AI output is invalid/unavailable" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;" vertex="1" parent="1"><mxGeometry x="700" y="250" width="220" height="110" as="geometry"/></mxCell>
+        <mxCell id="tools" value="Fixed Server Tools&#xa;queue_no_show_recovery_message&#xa;queue_post_visit_summary&#xa;schedule_refill_reminder" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1"><mxGeometry x="700" y="410" width="260" height="120" as="geometry"/></mxCell>
+        <mxCell id="db" value="PostgreSQL / Prisma&#xa;Runs, actions, drafts, traces, events, steps&#xa;Source of truth" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="350" y="540" width="240" height="110" as="geometry"/></mxCell>
+        <mxCell id="realtime" value="Supabase Realtime + polling&#xa;Admin dashboard observes persisted state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1"><mxGeometry x="700" y="580" width="260" height="90" as="geometry"/></mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="doctor" target="orchestrator"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="Start / approve" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="admin" target="orchestrator"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="validate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="orchestrator" target="policy"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="generate draft" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="orchestrator" target="ai"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" value="retry/fallback" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;endArrow=block;endFill=1;" edge="1" parent="1" source="ai" target="fallback"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" value="approved action only" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="orchestrator" target="tools"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e7" value="persist every state" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="orchestrator" target="db"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e8" value="read canonical state" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="db" target="realtime"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e9" value="notify only after final delivery gate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="tools" target="patient"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="no-show" name="2 - No-Show Recovery">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="No-Show Recovery Agent - Human-in-the-Loop Workflow" style="text;html=1;fontSize=24;fontStyle=1;align=center;" vertex="1" parent="1"><mxGeometry x="350" y="20" width="700" height="40" as="geometry"/></mxCell>
+        <mxCell id="a" value="Doctor clicks&#xa;Mark No-show + Follow-up" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="140" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="b" value="Create recovery ticket&#xa;Run + trace only&#xa;Patient NOT notified" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1"><mxGeometry x="270" y="140" width="190" height="80" as="geometry"/></mxCell>
+        <mxCell id="c" value="Admin dashboard&#xa;All pipeline stages initially not started" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="510" y="140" width="210" height="80" as="geometry"/></mxCell>
+        <mxCell id="d" value="Admin presses&#xa;Start Workflow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="770" y="140" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="e" value="Load trusted context&#xa;appointment + patient + doctor + slots" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1"><mxGeometry x="1010" y="140" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="f" value="Policy + dedupe + language resolution" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="1280" y="140" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="g" value="Call OpenRouter AI&#xa;Generate localized draft" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="1280" y="310" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="h" value="Validate output&#xa;Wrong/invalid -> one corrective retry&#xa;Then deterministic localized fallback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="1010" y="300" width="220" height="100" as="geometry"/></mxCell>
+        <mxCell id="i" value="Persist plan + immutable draft + proposed action" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1"><mxGeometry x="750" y="300" width="210" height="90" as="geometry"/></mxCell>
+        <mxCell id="j" value="Awaiting Admin Approval&#xa;Exact patient-facing message preview&#xa;Patient NOT notified" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="480" y="290" width="220" height="110" as="geometry"/></mxCell>
+        <mxCell id="k" value="Admin approves&#xa;Lock draft hash" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="250" y="300" width="180" height="80" as="geometry"/></mxCell>
+        <mxCell id="l" value="Final execution&#xa;language recheck + allowlist + safety + idempotency" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="40" y="290" width="170" height="100" as="geometry"/></mxCell>
+        <mxCell id="m" value="Delivery gate passes" style="rhombus;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="80" y="500" width="140" height="100" as="geometry"/></mxCell>
+        <mxCell id="n" value="Create exactly one in-app patient message" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="300" y="510" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="o" value="Patient sees localized notification&#xa;No raw URL / UUID&#xa;Rebook button uses trusted metadata" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="600" y="500" width="240" height="100" as="geometry"/></mxCell>
+        <mxCell id="p" value="Completed&#xa;Visibility + dismissal events remain auditable" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="930" y="510" width="230" height="80" as="geometry"/></mxCell>
+        <mxCell id="note" value="Presentation timing: backend state is real; dashboard intentionally exposes persisted stages with minimum visible intervals. The browser never authorizes delivery." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;" vertex="1" parent="1"><mxGeometry x="1230" y="490" width="260" height="130" as="geometry"/></mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="b" target="c"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="c" target="d"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="d" target="e"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="e" target="f"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="f" target="g"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="g" target="h"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="h" target="i"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i" target="j"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="j" target="k"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="k" target="l"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="l" target="m"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="m" target="n"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n" target="o"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e15" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="o" target="p"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="post-visit" name="3 - Post-Visit Follow-Up">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="t" value="Post-Consultation Follow-Up Agent" style="text;html=1;fontSize=24;fontStyle=1;align=center;" vertex="1" parent="1"><mxGeometry x="300" y="20" width="560" height="40" as="geometry"/></mxCell>
+        <mxCell id="a" value="Completed consultation&#xa;+ doctor-authored prescription" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="60" y="150" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="b" value="Load trusted prescription context" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1"><mxGeometry x="320" y="150" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="c" value="AI drafts patient-friendly explanation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="580" y="150" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="d" value="Medication fidelity check&#xa;name / dose / frequency / duration must match" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="840" y="140" width="220" height="100" as="geometry"/></mxCell>
+        <mxCell id="e" value="Invalid AI output?&#xa;Use deterministic fallback from exact prescription" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="840" y="330" width="220" height="100" as="geometry"/></mxCell>
+        <mxCell id="f" value="Persist plan + proposed actions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1"><mxGeometry x="580" y="340" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="g" value="Human review / approval" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="320" y="340" width="200" height="80" as="geometry"/></mxCell>
+        <mxCell id="h" value="Fixed tools only&#xa;Queue summary&#xa;Schedule/refresh reminder" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="60" y="330" width="200" height="100" as="geometry"/></mxCell>
+        <mxCell id="i" value="Patient receives approved summary&#xa;Prescription itself is unchanged" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="450" y="550" width="260" height="90" as="geometry"/></mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="b" target="c"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="c" target="d"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="fallback when invalid" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;endArrow=block;endFill=1;" edge="1" parent="1" source="d" target="e"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="d" target="f"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="e" target="f"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="f" target="g"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="g" target="h"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="h" target="i"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

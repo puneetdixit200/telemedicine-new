@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#475569"/></marker>
+    <style>
+      .title{font:700 30px Arial,sans-serif;fill:#0f172a}.box{stroke-width:2;rx:16;ry:16}.h{font:700 18px Arial,sans-serif;fill:#0f172a}.t{font:15px Arial,sans-serif;fill:#334155}.edge{stroke:#475569;stroke-width:2.5;fill:none;marker-end:url(#arrow)}.label{font:13px Arial,sans-serif;fill:#475569}
+    </style>
+  </defs>
+  <rect width="1400" height="820" fill="#ffffff"/>
+  <text x="700" y="48" text-anchor="middle" class="title">Telemedicine AI Agent Architecture</text>
+
+  <rect x="45" y="120" width="220" height="90" class="box" fill="#dbeafe" stroke="#60a5fa"/>
+  <text x="155" y="152" text-anchor="middle" class="h">Doctor</text><text x="155" y="178" text-anchor="middle" class="t">Creates clinical event</text><text x="155" y="198" text-anchor="middle" class="t">No-show / completed visit</text>
+  <rect x="45" y="285" width="220" height="90" class="box" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="155" y="317" text-anchor="middle" class="h">Administrator</text><text x="155" y="343" text-anchor="middle" class="t">Starts + reviews + approves</text>
+  <rect x="45" y="590" width="220" height="90" class="box" fill="#dcfce7" stroke="#22c55e"/>
+  <text x="155" y="622" text-anchor="middle" class="h">Patient</text><text x="155" y="648" text-anchor="middle" class="t">Receives approved</text><text x="155" y="668" text-anchor="middle" class="t">localized care update</text>
+
+  <rect x="390" y="180" width="270" height="100" class="box" fill="#ede9fe" stroke="#8b5cf6"/>
+  <text x="525" y="216" text-anchor="middle" class="h">Agent Orchestrator</text><text x="525" y="244" text-anchor="middle" class="t">Durable workflow + state machine</text><text x="525" y="266" text-anchor="middle" class="t">Idempotency + retries</text>
+  <rect x="390" y="340" width="270" height="125" class="box" fill="#fee2e2" stroke="#ef4444"/>
+  <text x="525" y="375" text-anchor="middle" class="h">Policy & Safety Layer</text><text x="525" y="403" text-anchor="middle" class="t">Authorization • language validation</text><text x="525" y="425" text-anchor="middle" class="t">Medication fidelity • allowlist</text><text x="525" y="447" text-anchor="middle" class="t">Delivery gate</text>
+  <rect x="390" y="575" width="270" height="110" class="box" fill="#f8fafc" stroke="#64748b"/>
+  <text x="525" y="608" text-anchor="middle" class="h">PostgreSQL / Prisma</text><text x="525" y="634" text-anchor="middle" class="t">Runs • actions • drafts • traces</text><text x="525" y="656" text-anchor="middle" class="t">events • execution steps</text><text x="525" y="678" text-anchor="middle" class="t">Canonical source of truth</text>
+
+  <rect x="805" y="115" width="260" height="100" class="box" fill="#dbeafe" stroke="#60a5fa"/>
+  <text x="935" y="148" text-anchor="middle" class="h">OpenRouter AI</text><text x="935" y="176" text-anchor="middle" class="t">openai/gpt-oss-120b</text><text x="935" y="198" text-anchor="middle" class="t">Draft wording / planning only</text>
+  <rect x="805" y="260" width="260" height="105" class="box" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="935" y="293" text-anchor="middle" class="h">Deterministic Fallback</text><text x="935" y="319" text-anchor="middle" class="t">Localized safe template</text><text x="935" y="341" text-anchor="middle" class="t">Used when AI is invalid/unavailable</text>
+  <rect x="805" y="425" width="300" height="125" class="box" fill="#dcfce7" stroke="#22c55e"/>
+  <text x="955" y="458" text-anchor="middle" class="h">Fixed Server Tools</text><text x="955" y="484" text-anchor="middle" class="t">queue_no_show_recovery_message</text><text x="955" y="506" text-anchor="middle" class="t">queue_post_visit_summary</text><text x="955" y="528" text-anchor="middle" class="t">schedule_refill_reminder</text>
+  <rect x="805" y="600" width="300" height="90" class="box" fill="#ede9fe" stroke="#8b5cf6"/>
+  <text x="955" y="632" text-anchor="middle" class="h">Realtime + Polling</text><text x="955" y="658" text-anchor="middle" class="t">Dashboard observes persisted state</text>
+
+  <path d="M265 165 H390" class="edge"/><path d="M265 330 H390" class="edge"/>
+  <path d="M525 280 V340" class="edge"/><path d="M660 220 H805" class="edge"/><path d="M935 215 V260" class="edge"/>
+  <path d="M660 405 H805" class="edge"/><path d="M525 465 V575" class="edge"/><path d="M660 630 H805" class="edge"/>
+  <path d="M805 488 C700 488,700 635,660 635" class="edge"/><path d="M805 488 C620 488,620 635,265 635" class="edge"/>
+
+  <text x="315" y="150" class="label">trigger</text><text x="306" y="315" class="label">start / approve</text><text x="690" y="205" class="label">generate draft</text><text x="690" y="390" class="label">approved tools only</text><text x="690" y="620" class="label">persist + observe</text>
+</svg>
