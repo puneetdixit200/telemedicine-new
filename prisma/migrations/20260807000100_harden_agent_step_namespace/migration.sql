@@ -47,6 +47,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS "AgentExecutionStep_namespace_no_show_sequence" ON "AgentExecutionStep";
 DROP TRIGGER IF EXISTS "AgentExecutionStep_namespace_sequence" ON "AgentExecutionStep";
 
 CREATE TRIGGER "AgentExecutionStep_namespace_sequence"
