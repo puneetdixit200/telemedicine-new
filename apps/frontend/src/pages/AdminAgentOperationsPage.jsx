@@ -3,10 +3,10 @@ import { apiRequest, utcDateTime } from '../lib/api';
 import { createSupabaseBrowserClient } from '../../../../src/lib/supabase/browser';
 
 const STAGES = [
-  ['trigger', 'Triggered'], ['context', 'Context loaded'], ['policy', 'Policy validated'],
-  ['deduplication', 'Deduplication checked'], ['planning', 'AI model called'], ['validation', 'Output validated'],
-  ['persistence', 'Plan saved'], ['approval', 'Awaiting approval'], ['execution', 'Actions executing'],
-  ['notification', 'Patient result'], ['completion', 'Completed']
+  ['trigger', 'Workflow Initiated'], ['context', 'Clinical Context Acquisition'], ['policy', 'Safety & Policy Enforcement'],
+  ['deduplication', 'Duplicate Execution Prevention'], ['planning', 'AI Reasoning & Plan Generation'], ['validation', 'AI Output Safety Validation'],
+  ['persistence', 'Approved Plan Persistence'], ['approval', 'Human-in-the-Loop Safety Gate'], ['execution', 'Controlled Clinical Action Execution'],
+  ['notification', 'Patient-Safe Outcome Generation'], ['completion', 'Workflow Integrity Verified']
 ];
 
 const phaseLabel = (phase) => ({ planning: 'AI', policy: 'Policy', execution: 'Execution', notification: 'Notifications', approval: 'Approval', validation: 'Safety' }[phase] || phase);
