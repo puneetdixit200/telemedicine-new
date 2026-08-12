@@ -4,6 +4,7 @@ const { prisma } = require('../models/db');
 const router = express.Router();
 const SERVICE_NAME = String(process.env.SERVICE_NAME || 'telemedicine-rural-api');
 const READINESS_TIMEOUT_MS = Math.max(100, Number(process.env.READINESS_TIMEOUT_MS || 5000));
+const DEPLOYED_GIT_SHA = String(process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || '').trim() || null;
 
 function nowIso() {
   return new Date().toISOString();
@@ -11,6 +12,10 @@ function nowIso() {
 
 function requestId(req) {
   return req.requestId || null;
+}
+
+function deploymentInfo() {
+  return { gitSha: DEPLOYED_GIT_SHA };
 }
 
 function withTimeout(promise, timeoutMs) {
@@ -34,6 +39,7 @@ router.get('/live', (req, res) => {
     status: 'live',
     overallStatus: 'live',
     service: SERVICE_NAME,
+    deployment: deploymentInfo(),
     uptimeSeconds: Math.floor(process.uptime()),
     checks: {
       process: {
@@ -63,6 +69,7 @@ router.get('/ready', async (req, res) => {
       status: 'ready',
       overallStatus: 'ready',
       service: SERVICE_NAME,
+      deployment: deploymentInfo(),
       policy: {
         mode: 'strict',
         timeoutMs: READINESS_TIMEOUT_MS,
@@ -87,6 +94,7 @@ router.get('/ready', async (req, res) => {
       error: 'Service not ready',
       code: 'SERVICE_UNAVAILABLE',
       service: SERVICE_NAME,
+      deployment: deploymentInfo(),
       alert: {
         severity: 'critical',
         summary: 'Readiness check failed for database dependency'

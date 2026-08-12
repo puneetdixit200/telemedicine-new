@@ -24,16 +24,19 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit production dependencies for high or critical vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint
@@ -63,7 +66,7 @@ jobs:
           )
           for name in "${required[@]}"; do
             if [ -z "${!name}" ]; then
-              echo "Skipping Playwright E2E because $name is not configured as a repository secret."
+              echo "Skipping local Playwright E2E because $name is not configured as a repository secret."
               exit 0
             fi
           done
@@ -73,8 +76,64 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+
+  production-smoke:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PLAYWRIGHT_BASE_URL: https://telemedicine-new-eta.vercel.app
+      PLAYWRIGHT_SKIP_WEBSERVER: '1'
+
+    steps:
+      - name: Checkout exact merged commit
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Wait for exact Vercel production commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 42); do
+            body="$(curl -fsS "${PLAYWRIGHT_BASE_URL}/api/health/live" || true)"
+            deployed_sha="$(BODY="$body" node -e "try { const data = JSON.parse(process.env.BODY || '{}'); process.stdout.write(data.deployment?.gitSha || ''); } catch (_) {}")"
+            if [ "$deployed_sha" = "$GITHUB_SHA" ]; then
+              echo "Vercel is serving the expected commit $GITHUB_SHA"
+              exit 0
+            fi
+            echo "Waiting for Vercel production. Attempt $attempt/42; current SHA: ${deployed_sha:-unknown}"
+            sleep 10
+          done
+          echo "Timed out waiting for Vercel to serve $GITHUB_SHA"
+          exit 1
+
+      - name: Verify production readiness
+        run: curl --fail --silent --show-error "${PLAYWRIGHT_BASE_URL}/api/health/ready"
+
+      - name: Run hosted production browser smoke tests
+        run: npm run test:e2e
+
+      - name: Upload production Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-playwright-report
           path: playwright-report/
           if-no-files-found: ignore

@@ -12,7 +12,6 @@ async function ensureAppointmentAccess(appointmentId, user) {
     }
   });
   if (!appt) return null;
-  if (user.role === 'admin') return appt;
   if (user.id !== appt.patientId && user.id !== appt.doctorId) return null;
   return appt;
 }
@@ -67,12 +66,21 @@ const callsController = {
       }
 
       const presence = getAppointmentPresence(appt);
-
-      await prisma.callSession.upsert({
+      const startedAt = new Date();
+      let callSession = await prisma.callSession.upsert({
         where: { appointmentId },
-        update: { status: 'in_progress', startedAt: new Date(), endedAt: null },
-        create: { appointmentId, status: 'in_progress', startedAt: new Date() }
+        update: { status: 'in_progress', endedAt: null },
+        create: { appointmentId, status: 'in_progress', startedAt }
       });
+
+      // A refresh/rejoin must never reset the original consultation start time.
+      // Backfill only legacy rows that somehow lack it.
+      if (!callSession.startedAt) {
+        callSession = await prisma.callSession.update({
+          where: { appointmentId },
+          data: { startedAt }
+        });
+      }
 
       const history = await loadPatientHistory(appt);
 
@@ -117,7 +125,7 @@ const callsController = {
       if (!appt) return res.status(404).json({ error: 'Not found' });
 
       await prisma.callSession.updateMany({
-        where: { appointmentId },
+        where: { appointmentId, status: { not: 'ended' } },
         data: { status: 'ended', endedAt: new Date() }
       });
 
