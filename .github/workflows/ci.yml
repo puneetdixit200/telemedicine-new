@@ -35,8 +35,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Audit production dependencies for critical vulnerabilities
-        run: npm audit --omit=dev --audit-level=critical
+      - name: Audit production dependencies for high or critical vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint
