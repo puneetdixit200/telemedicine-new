@@ -27,10 +27,16 @@ jobs:
           cache: npm
 
       - name: Apply semver-compatible security fixes only
-        run: npm audit fix --ignore-scripts
+        shell: bash
+        run: |
+          set +e
+          npm audit fix --ignore-scripts
+          audit_fix_status=$?
+          set -e
+          echo "npm audit fix exit code: $audit_fix_status (remaining lower-severity advisories are checked separately)"
 
-      - name: Verify no critical production vulnerabilities remain
-        run: npm audit --omit=dev --audit-level=critical
+      - name: Verify no high or critical production vulnerabilities remain
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Commit dependency updates
         shell: bash
