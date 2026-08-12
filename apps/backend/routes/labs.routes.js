@@ -1,6 +1,6 @@
 const express = require('express');
 const { authRequired } = require('../middleware/auth');
-const { requireValidLabTransition } = require('../middleware/order-transitions');
+const { requireValidLabTransition, requireLabReportAttachable } = require('../middleware/order-transitions');
 const { labsController } = require('../controllers/labs.controller');
 
 const router = express.Router();
@@ -12,6 +12,6 @@ router.get('/orders', authRequired, labsController.listOrders);
 router.post('/orders', authRequired, labsController.createOrder);
 router.get('/orders/:orderId', authRequired, labsController.viewOrder);
 router.post('/orders/:orderId/status', authRequired, requireValidLabTransition, labsController.updateOrderStatus);
-router.post('/orders/:orderId/report', authRequired, labsController.attachReport);
+router.post('/orders/:orderId/report', authRequired, requireLabReportAttachable, labsController.attachReport);
 
 module.exports = router;
