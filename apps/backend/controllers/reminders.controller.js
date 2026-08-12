@@ -1,5 +1,6 @@
 const { prisma } = require('../models/db');
 const { dispatchDueReminderJobs } = require('../services/reminder.service');
+const { smsProviderConfig } = require('../services/sms.service');
 
 function isReminderTableMissing(error) {
   return Boolean(
@@ -46,9 +47,24 @@ function summarizeTimeline(rows) {
   return summary;
 }
 
+function reminderGuidance(role, providerConfigured) {
+  if (role === 'patient') {
+    return providerConfigured
+      ? 'Your reminders are auto-scheduled for SMS delivery. Keep your saved phone number current.'
+      : 'Your reminder schedule is visible here. External SMS delivery is currently unavailable.';
+  }
+  if (role === 'help_worker') {
+    return 'You can view reminder timelines for patients who delegated active support to your account.';
+  }
+  return providerConfigured
+    ? 'Dispatch due SMS reminders to support low-connectivity patients.'
+    : 'SMS provider is not configured. Due reminders will not be reported as sent until delivery is configured.';
+}
+
 const remindersController = {
   list: async (req, res, next) => {
     try {
+      const providerConfigured = smsProviderConfig().configured;
       let where;
       if (req.user.role === 'patient') {
         where = { patientId: req.user.id };
@@ -62,6 +78,7 @@ const remindersController = {
             timeline: [],
             summary: { scheduled: 0, sent: 0, failed: 0, skipped: 0 },
             unsupported: false,
+            providerConfigured,
             guidance: 'Add your phone number in profile to receive delegated reminder visibility.'
           });
         }
@@ -80,6 +97,7 @@ const remindersController = {
             timeline: [],
             summary: { scheduled: 0, sent: 0, failed: 0, skipped: 0 },
             unsupported: false,
+            providerConfigured,
             guidance: 'No delegated reminders are linked to your helper account yet.'
           });
         }
@@ -124,12 +142,8 @@ const remindersController = {
         timeline,
         summary,
         unsupported: false,
-        guidance:
-          req.user.role === 'patient'
-            ? 'Your reminders are auto-scheduled. Keep your phone online for alerts.'
-            : req.user.role === 'help_worker'
-              ? 'You can view reminder timelines for patients who delegated active support to your account.'
-              : 'Dispatch due reminders any time to support low-connectivity patients.'
+        providerConfigured,
+        guidance: reminderGuidance(req.user.role, providerConfigured)
       });
     } catch (error) {
       if (!isReminderTableMissing(error)) return next(error);
@@ -138,6 +152,7 @@ const remindersController = {
         timeline: [],
         summary: { scheduled: 0, sent: 0, failed: 0, skipped: 0 },
         unsupported: true,
+        providerConfigured: false,
         guidance: 'Reminder pipeline is disabled until the latest Prisma migration is applied.'
       });
     }
@@ -168,4 +183,4 @@ const remindersController = {
   }
 };
 
-module.exports = { remindersController };
+module.exports = { remindersController, reminderGuidance };
