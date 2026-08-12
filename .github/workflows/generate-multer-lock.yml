@@ -1,0 +1,37 @@
+name: Generate Multer lock artifact
+
+on:
+  push:
+    branches: [ fix/non-agent-production-hardening ]
+    paths:
+      - package.json
+      - .github/workflows/generate-multer-lock.yml
+
+permissions:
+  contents: read
+
+jobs:
+  generate-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Refresh package lock
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Verify patched Multer is locked
+        run: node -e "const lock=require('./package-lock.json'); const v=lock.packages?.['node_modules/multer']?.version; if(v!=='2.2.0') { throw new Error('Expected multer 2.2.0, got '+v); } console.log('multer',v);"
+
+      - name: Upload lock artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-package-lock
+          path: package-lock.json
+          if-no-files-found: error
