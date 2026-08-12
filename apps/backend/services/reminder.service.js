@@ -1,4 +1,5 @@
 const { prisma } = require('../models/db');
+const { sendSms } = require('./sms.service');
 
 function isReminderTableMissing(error) {
   return Boolean(
@@ -234,6 +235,20 @@ function messageForDispatch(job) {
   return `Namaste ${patientName}. Reminder: consultation with Dr. ${doctorName} at ${timeLabel}.`;
 }
 
+function safeDispatchError(error) {
+  const code = safeText(error?.code) || 'SMS_DELIVERY_FAILED';
+  const allowed = new Set([
+    'SMS_PROVIDER_NOT_CONFIGURED',
+    'SMS_INVALID_DESTINATION',
+    'SMS_EMPTY_BODY',
+    'SMS_PROVIDER_TIMEOUT',
+    'SMS_PROVIDER_NETWORK_ERROR',
+    'SMS_PROVIDER_REJECTED',
+    'SMS_PROVIDER_INVALID_RESPONSE'
+  ]);
+  return allowed.has(code) ? code : 'SMS_DELIVERY_FAILED';
+}
+
 async function dispatchDueReminderJobs(options = {}) {
   const limit = Number(options.limit) > 0 ? Math.min(Number(options.limit), 80) : 25;
   const doctorId = safeText(options.doctorId) || null;
@@ -261,49 +276,78 @@ async function dispatchDueReminderJobs(options = {}) {
       take: limit
     });
 
+    let processed = 0;
     let sent = 0;
     let failed = 0;
+    let skipped = 0;
 
     for (const job of jobs) {
-      const targetPhone = safeText(job.patient?.phone);
-      if (!targetPhone) {
+      // Claim the reminder before contacting an external provider. ReminderStatus has
+      // no processing state, so failed is used as a safe, non-sendable claim. A
+      // successful provider acceptance immediately promotes it to sent. A crash
+      // leaves it failed rather than risking duplicate SMS delivery.
+      const claim = await prisma.reminderJob.updateMany({
+        where: { id: job.id, status: 'scheduled' },
+        data: {
+          status: 'failed',
+          attempts: { increment: 1 },
+          failedAt: new Date(),
+          lastError: 'SMS_DISPATCH_IN_PROGRESS'
+        }
+      });
+
+      if (claim.count !== 1) {
+        skipped += 1;
+        continue;
+      }
+
+      processed += 1;
+
+      try {
+        const delivery = await sendSms({
+          to: job.patient?.phone,
+          body: messageForDispatch(job)
+        });
+
+        const basePayload = job.payload && typeof job.payload === 'object' && !Array.isArray(job.payload) ? job.payload : {};
+        await prisma.reminderJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'sent',
+            sentAt: new Date(),
+            failedAt: null,
+            lastError: null,
+            payload: {
+              ...basePayload,
+              delivery: {
+                provider: delivery.provider,
+                providerMessageId: delivery.messageId,
+                providerStatus: delivery.providerStatus,
+                submittedAt: new Date().toISOString()
+              }
+            }
+          }
+        });
+        sent += 1;
+      } catch (error) {
         await prisma.reminderJob.update({
           where: { id: job.id },
           data: {
             status: 'failed',
-            attempts: { increment: 1 },
             failedAt: new Date(),
-            lastError: 'Missing phone number'
+            lastError: safeDispatchError(error)
           }
         });
         failed += 1;
-        continue;
       }
-
-      const smsBody = messageForDispatch(job);
-      // eslint-disable-next-line no-console
-      console.log(`[ReminderDispatch] SMS -> ${targetPhone}: ${smsBody}`);
-
-      await prisma.reminderJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'sent',
-          attempts: { increment: 1 },
-          sentAt: new Date(),
-          failedAt: null,
-          lastError: null
-        }
-      });
-
-      sent += 1;
     }
 
     return {
       ok: true,
-      processed: jobs.length,
+      processed,
       sent,
       failed,
-      skipped: 0
+      skipped
     };
   } catch (error) {
     if (isReminderTableMissing(error)) {
@@ -318,5 +362,7 @@ module.exports = {
   scheduleRemindersForAppointment,
   scheduleRefillReminderForAppointment,
   cancelScheduledRemindersForAppointment,
-  dispatchDueReminderJobs
+  dispatchDueReminderJobs,
+  messageForDispatch,
+  safeDispatchError
 };
