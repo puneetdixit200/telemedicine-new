@@ -56,13 +56,37 @@ async function requireValidLabTransition(req, res, next) {
 
     const order = await prisma.labOrder.findUnique({
       where: { id: req.params.orderId },
-      select: { id: true, status: true }
+      select: { id: true, status: true, reportDocumentId: true }
     });
     if (!order) return res.status(404).json({ error: 'Lab order not found.' });
 
     if (!canTransition(LAB_TRANSITIONS, order.status, requestedStatus)) {
       return res.status(409).json({
         error: `Invalid lab order transition from ${order.status} to ${requestedStatus}.`
+      });
+    }
+
+    if ((requestedStatus === 'report_ready' || requestedStatus === 'completed') && !order.reportDocumentId) {
+      return res.status(409).json({ error: 'A PDF lab report must be linked before this status can be set.' });
+    }
+
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function requireLabReportAttachable(req, res, next) {
+  try {
+    const order = await prisma.labOrder.findUnique({
+      where: { id: req.params.orderId },
+      select: { id: true, status: true }
+    });
+    if (!order) return res.status(404).json({ error: 'Lab order not found.' });
+
+    if (!['processing', 'report_ready'].includes(order.status)) {
+      return res.status(409).json({
+        error: 'A report can be linked only after the lab order reaches processing.'
       });
     }
 
@@ -77,5 +101,6 @@ module.exports = {
   LAB_TRANSITIONS,
   canTransition,
   requireValidPharmacyTransition,
-  requireValidLabTransition
+  requireValidLabTransition,
+  requireLabReportAttachable
 };
