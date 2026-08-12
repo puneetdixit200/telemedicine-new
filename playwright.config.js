@@ -4,6 +4,7 @@ const { defineConfig, devices } = require('@playwright/test');
 
 const port = Number(process.env.PORT || 3000);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${port}`;
+const skipWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER === '1';
 const chromiumExecutablePath =
   process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
   (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
@@ -27,12 +28,14 @@ module.exports = defineConfig({
     geolocation: { latitude: 26.8467, longitude: 80.9462 },
     locale: 'en-US'
   },
-  webServer: {
-    command: 'npm run dev',
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000
-  },
+  webServer: skipWebServer
+    ? undefined
+    : {
+        command: 'npm run dev',
+        url: baseURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000
+      },
   projects: [
     {
       name: 'chromium',
