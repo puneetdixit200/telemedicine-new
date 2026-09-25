@@ -8,6 +8,68 @@ const STAGES = [
   ['persistence', 'Approved Plan Persistence'], ['approval', 'Human-in-the-Loop Safety Gate'], ['execution', 'Controlled Clinical Action Execution'],
   ['notification', 'Patient-Safe Outcome Generation'], ['completion', 'Workflow Integrity Verified']
 ];
+const VISUAL_STAGE_MS = 4000;
+const VISUAL_STORAGE_KEY = 'admin-agent-visual-timelines-v1';
+const PRE_APPROVAL_STAGES = STAGES.slice(0, 7).map(([phase]) => phase);
+const POST_APPROVAL_STAGES = STAGES.slice(8).map(([phase]) => phase);
+
+function readVisualTimelines() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(VISUAL_STORAGE_KEY) || '{}');
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    return Object.fromEntries(Object.entries(saved).filter(([, value]) => Number(value?.preStartedAt) > cutoff));
+  } catch (_error) {
+    return {};
+  }
+}
+
+function visualPipelineFor(timeline, trace, now) {
+  if (!timeline?.preStartedAt || !trace?.run || ['failed', 'cancelled'].includes(trace.status)) return null;
+  if (!timeline.postStartedAt && ['executing', 'completed', 'partially_completed'].includes(trace.run.status)) return null;
+  const pipeline = Object.fromEntries(STAGES.map(([phase]) => [phase, { state: 'not_started' }]));
+  const visualStage = (state, startedAt, reason) => ({
+    state,
+    reason,
+    durationMs: state === 'active' ? Math.max(0, now - startedAt) : VISUAL_STAGE_MS,
+    remainingMs: state === 'active' ? Math.max(0, VISUAL_STAGE_MS - (now - startedAt)) : 0
+  });
+
+  PRE_APPROVAL_STAGES.forEach((phase, index) => {
+    const startedAt = timeline.preStartedAt + index * VISUAL_STAGE_MS;
+    if (now >= startedAt + VISUAL_STAGE_MS || timeline.postStartedAt) {
+      pipeline[phase] = visualStage('completed', startedAt, 'Visual walkthrough complete');
+    } else if (now >= startedAt) {
+      pipeline[phase] = visualStage('active', startedAt, 'Visual walkthrough in progress');
+    }
+  });
+
+  const approvalAt = timeline.preStartedAt + PRE_APPROVAL_STAGES.length * VISUAL_STAGE_MS;
+  if (timeline.postStartedAt) {
+    pipeline.approval = { state: 'completed', reason: 'Administrator submitted approval' };
+  } else if (now >= approvalAt) {
+    pipeline.approval = {
+      state: trace.run.status === 'awaiting_approval' ? 'waiting' : 'active',
+      reason: trace.run.status === 'awaiting_approval'
+        ? 'Human approval required; no patient message has been sent'
+        : 'Waiting for backend planning before approval'
+    };
+  }
+
+  if (!timeline.postStartedAt) return pipeline;
+  POST_APPROVAL_STAGES.forEach((phase, index) => {
+    const startedAt = timeline.postStartedAt + index * VISUAL_STAGE_MS;
+    const finished = now >= startedAt + VISUAL_STAGE_MS;
+    if (finished && (phase !== 'completion' || ['completed', 'partially_completed'].includes(trace.run.status))) {
+      pipeline[phase] = visualStage('completed', startedAt, 'Visual walkthrough complete');
+    } else if (now >= startedAt) {
+      pipeline[phase] = visualStage('active', startedAt, phase === 'completion' && finished
+        ? 'Visual walkthrough finished; waiting for backend outcome'
+        : 'Visual walkthrough in progress');
+    }
+  });
+  return pipeline;
+}
 
 const phaseLabel = (phase) => ({ planning: 'AI', policy: 'Policy', execution: 'Execution', notification: 'Notifications', approval: 'Approval', validation: 'Safety' }[phase] || phase);
 const shortId = (value) => value ? `${value.slice(0, 8)}…` : '—';
@@ -30,14 +92,15 @@ function stageState(events, phase, traceStatus) {
   return 'not-started';
 }
 
-function Stage({ phase, label, events, presentation, replay, traceStatus }) {
-  const derived = presentation?.pipeline?.[phase];
+function Stage({ phase, label, events, presentation, visualPipeline, replay, traceStatus }) {
+  const derived = visualPipeline?.[phase] || presentation?.pipeline?.[phase];
   const state = replay ? stageState(events, phase, traceStatus) : derived?.state || stageState(events, phase, traceStatus);
   const duration = replay ? events.filter((event) => event.phase === phase && event.durationMs).at(-1)?.durationMs : derived?.durationMs;
   const remainingSeconds = derived?.remainingMs > 0 ? Math.ceil(derived.remainingMs / 1000) : null;
-  return <div className={`agent-stage ${state.replaceAll('_', '-')}`} aria-label={`${label}: ${state}`}>
+  return <div className={`agent-stage ${state.replaceAll('_', '-')}`} aria-label={`${label}: ${state}`} data-phase={phase}>
     <span className="agent-stage-marker" aria-hidden="true">{state === 'completed' ? '✓' : state === 'failed' ? '!' : state === 'active' ? '•' : state === 'waiting' ? '…' : '○'}</span>
     <strong>{label}</strong><small>{state.replaceAll('_', ' ')}{derived?.reason ? ` · ${derived.reason}` : ''}{remainingSeconds ? ` · ${remainingSeconds}s remaining` : ''}{duration ? ` · ${duration} ms` : ''}</small>
+    {visualPipeline && state === 'active' && phase !== 'approval' ? <span className="agent-stage-progress" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.round((duration || 0) / VISUAL_STAGE_MS * 100))}%` }} /></span> : null}
   </div>;
 }
 
@@ -62,6 +125,8 @@ export default function AdminAgentOperationsPage({ user }) {
   const [replayIndex, setReplayIndex] = useState(null);
   const [controlBusy, setControlBusy] = useState(false);
   const [controlError, setControlError] = useState('');
+  const [visualTimelines, setVisualTimelines] = useState(readVisualTimelines);
+  const [visualNow, setVisualNow] = useState(Date.now());
   const manualSelectionRef = useRef(false);
   const pausedRef = useRef(paused);
   const eventIds = useRef(new Set());
@@ -71,6 +136,18 @@ export default function AdminAgentOperationsPage({ user }) {
   selectedIdRef.current = selectedId;
   activeRunsRef.current = overview.activeRuns || 0;
   pausedRef.current = paused;
+
+  useEffect(() => {
+    try { window.sessionStorage.setItem(VISUAL_STORAGE_KEY, JSON.stringify(visualTimelines)); } catch (_error) {}
+  }, [visualTimelines]);
+
+  useEffect(() => {
+    if (!Object.values(visualTimelines).some((timeline) =>
+      Date.now() - Number(timeline.postStartedAt || timeline.preStartedAt) < 2 * 60 * 1000
+    )) return undefined;
+    const timer = setInterval(() => setVisualNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [visualTimelines]);
 
   const sync = useCallback(async ({ incremental = false } = {}) => {
     const [summaryResponse, tracesResponse] = await Promise.all([
@@ -203,6 +280,29 @@ export default function AdminAgentOperationsPage({ user }) {
   const replayEvents = replay && replayIndex !== null ? events.slice(0, replayIndex + 1) : events;
   const approvalRemainingMs = Number(selected?.presentation?.approvalRemainingMs || 0);
   const approvalReady = selected?.presentation?.approvalReady === true;
+  const visualTimeline = selected?.run?.id ? visualTimelines[selected.run.id] : null;
+  const visualPipeline = !replay ? visualPipelineFor(visualTimeline, selected, visualNow) : null;
+  const visualApprovalReady = !visualTimeline || visualNow >= visualTimeline.preStartedAt + PRE_APPROVAL_STAGES.length * VISUAL_STAGE_MS;
+
+  const beginVisualPhase = (runId, phase) => {
+    manualSelectionRef.current = true;
+    setVisualNow(Date.now());
+    setVisualTimelines((current) => ({ ...current, [runId]: {
+      ...(current[runId] || {}),
+      [phase === 'pre' ? 'preStartedAt' : 'postStartedAt']: Date.now()
+    } }));
+  };
+
+  const undoVisualPhase = (runId, phase) => {
+    setVisualTimelines((current) => {
+      const next = { ...current };
+      const timeline = { ...(next[runId] || {}) };
+      delete timeline[phase === 'pre' ? 'preStartedAt' : 'postStartedAt'];
+      if (timeline.preStartedAt) next[runId] = timeline;
+      else delete next[runId];
+      return next;
+    });
+  };
 
   useEffect(() => {
     const status = selected?.run?.status;
@@ -234,22 +334,28 @@ export default function AdminAgentOperationsPage({ user }) {
       const response = await apiRequest(path, { method: 'POST', ...(body ? { body } : {}) });
       if (!response.ok) setControlError(response.data?.error || 'Workflow request failed. Please refresh and try again.');
       await refreshSelected();
+      return response.ok;
     } catch (_error) {
       setControlError('Connection failed. The workflow status will keep refreshing; check before retrying.');
+      return null;
     } finally {
       setControlBusy(false);
     }
   };
 
   const approveAndRun = async () => {
-    if (!selected?.run?.id || controlBusy || !approvalReady) return;
+    if (!selected?.run?.id || controlBusy || !approvalReady || !visualApprovalReady) return;
     const actionIds = (selected.run.actions || []).filter((action) => action.status === 'proposed').map((action) => action.id);
-    await runControl(`/api/admin/agents/runs/${selected.run.id}/approve-and-continue`, { actionIds });
+    beginVisualPhase(selected.run.id, 'post');
+    const ok = await runControl(`/api/admin/agents/runs/${selected.run.id}/approve-and-continue`, { actionIds });
+    if (ok === false) undoVisualPhase(selected.run.id, 'post');
   };
 
   const startWorkflow = async () => {
     if (!selected?.run?.id || controlBusy) return;
-    await runControl(`/api/admin/agents/runs/${selected.run.id}/start`);
+    beginVisualPhase(selected.run.id, 'pre');
+    const ok = await runControl(`/api/admin/agents/runs/${selected.run.id}/start`);
+    if (ok === false) undoVisualPhase(selected.run.id, 'pre');
   };
 
   const retryWorkflow = async () => {
@@ -283,8 +389,8 @@ export default function AdminAgentOperationsPage({ user }) {
     <div className="agent-ops-layout">
       <aside className="agent-run-list card"><div className="agent-panel-heading"><h2>Runs</h2><select value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Filter traces"><option value="all">All</option><option value="active">Active</option><option value="awaiting_approval">Awaiting approval</option><option value="executing">Executing</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="real-ai">Real AI</option><option value="fallback">Fallback</option></select></div>{filteredTraces.length ? filteredTraces.map((trace) => <button type="button" className={`agent-run-card ${trace.id === selectedId ? 'selected' : ''}`} key={trace.id} onClick={() => { manualSelectionRef.current = true; setSelectedId(trace.id); setReplay(false); }}><span className="agent-run-card-top"><strong>{agentLabel(trace.agentType)}</strong><span className={`agent-status ${trace.status}`}>{trace.status.replaceAll('_', ' ')}</span></span><span>Trace {shortId(trace.id)} · Appt {shortId(trace.appointmentId)}</span><span>{trace.integrity?.status === 'historical_unresolved' ? 'Historical record · original relationship unavailable' : `${trace.run?.plan?.model || 'Provider pending'} · ${trace.run?.plan?.fallbackUsed ? 'Deterministic fallback' : trace.run?.plan ? 'Real AI' : 'Planning'}`}</span><small>{utcDateTime(trace.updatedAt)}</small></button>) : <p className="muted">No persisted traces yet. Trigger an agent to begin.</p>}</aside>
       <main className="agent-ops-main">{selected ? <>
-        <article className="card agent-selected-summary"><div><p className="kicker">{replay ? 'Historical replay' : 'Selected trace'}</p><h2>{agentLabel(selected.agentType)}</h2><p className="muted">Trace {presentation ? masked(selected.id) : selected.id} · Run {presentation ? masked(selected.run?.id) : selected.run?.id || (selected.status === 'deduplicated' ? 'existing run reused' : 'not linked yet')}</p>{selected.run?.status === 'queued_for_start' ? <p className="muted">The doctor created this recovery ticket. The workflow has not started, and the patient has not been notified.</p> : null}{selected.integrity?.status === 'historical_unresolved' ? <p className="muted">Historical record · original relationship unavailable · terminal · no action required</p> : null}</div><div className="agent-selected-badges"><span className={`agent-status ${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><span>{selected.presentation?.outcome === 'existing_run_reused' ? 'Existing run reused' : selected.run?.plan?.model || (selected.presentation?.isTerminal ? 'No model call' : 'Model pending')}</span><span>{selected.run?.plan?.fallbackUsed ? 'Fallback used' : selected.run?.plan ? 'Real AI' : selected.run?.status === 'queued_for_start' ? 'Waiting for admin start' : selected.status === 'awaiting_approval' ? 'Human approval required' : selected.presentation?.outcome === 'existing_run_reused' ? 'No duplicate AI request' : '—'}</span></div>{user?.role === 'admin' && selected.agentType === 'no_show_recovery' && selected.run?.status === 'queued_for_start' && !replay ? <div className="agent-plan-controls"><button type="button" onClick={startWorkflow} disabled={controlBusy}>{controlBusy ? 'Starting…' : 'Start Workflow'}</button><button type="button" className="ghost" onClick={rejectRun} disabled={controlBusy}>Reject Ticket</button></div> : null}{user?.role === 'admin' && selected.agentType === 'no_show_recovery' && selected.run?.status === 'awaiting_approval' && !replay ? <div className="agent-plan-controls"><span className="muted">Five-second paced execution is enforced by the server.</span><button type="button" onClick={approveAndRun} disabled={controlBusy || !approvalReady}>{controlBusy ? 'Continuing…' : approvalReady ? 'Approve and Continue' : `Approval available in ${Math.max(1, Math.ceil(approvalRemainingMs / 1000))}s`}</button><button type="button" className="ghost" onClick={rejectRun} disabled={controlBusy}>Reject</button></div> : null}{user?.role === 'admin' && selected.presentation?.retryAvailable && !replay ? <div className="agent-plan-controls"><span className="muted">No patient message exists. The approved draft can be retried without regeneration.</span><button type="button" onClick={retryWorkflow} disabled={controlBusy}>{controlBusy ? 'Retrying safely…' : 'Retry failed delivery safely'}</button></div> : null}</article>
-        <article className="card"><div className="agent-panel-heading"><h2>Live workflow pipeline</h2><span className="muted">Each macro stage remains visible for at least five seconds and is derived from persisted backend state</span></div><div className="agent-pipeline">{STAGES.map(([phase, label]) => <Stage key={phase} phase={phase} label={label} events={replayEvents} presentation={selected.presentation} replay={replay} traceStatus={replay ? null : selected.status}/>)}</div></article>
+        <article className="card agent-selected-summary"><div><p className="kicker">{replay ? 'Historical replay' : 'Selected trace'}</p><h2>{agentLabel(selected.agentType)}</h2><p className="muted">Trace {presentation ? masked(selected.id) : selected.id} · Run {presentation ? masked(selected.run?.id) : selected.run?.id || (selected.status === 'deduplicated' ? 'existing run reused' : 'not linked yet')}</p>{selected.run?.status === 'queued_for_start' && !visualPipeline ? <p className="muted">The doctor created this recovery ticket. The workflow has not started, and the patient has not been notified.</p> : null}{selected.integrity?.status === 'historical_unresolved' ? <p className="muted">Historical record · original relationship unavailable · terminal · no action required</p> : null}</div><div className="agent-selected-badges"><span className={`agent-status ${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><span>{selected.presentation?.outcome === 'existing_run_reused' ? 'Existing run reused' : selected.run?.plan?.model || (selected.presentation?.isTerminal ? 'No model call' : 'Model pending')}</span><span>{selected.run?.plan?.fallbackUsed ? 'Fallback used' : selected.run?.plan ? 'Real AI' : selected.run?.status === 'queued_for_start' ? 'Waiting for admin start' : selected.status === 'awaiting_approval' ? 'Human approval required' : '—'}</span></div>{user?.role === 'admin' && selected.agentType === 'no_show_recovery' && selected.run?.status === 'queued_for_start' && !replay ? <div className="agent-plan-controls"><button type="button" onClick={startWorkflow} disabled={controlBusy}>{controlBusy ? 'Starting…' : 'Start Workflow'}</button><button type="button" className="ghost" onClick={rejectRun} disabled={controlBusy}>Reject Ticket</button></div> : null}{user?.role === 'admin' && selected.agentType === 'no_show_recovery' && selected.run?.status === 'awaiting_approval' && !replay ? <div className="agent-plan-controls"><span className="muted">Approval is server-controlled; the stage animation is only a visual walkthrough.</span><button type="button" onClick={approveAndRun} disabled={controlBusy || !approvalReady || !visualApprovalReady}>{controlBusy ? 'Continuing…' : !visualApprovalReady ? `Visual walkthrough: ${Math.ceil((visualTimeline.preStartedAt + PRE_APPROVAL_STAGES.length * VISUAL_STAGE_MS - visualNow) / 1000)}s` : approvalReady ? 'Approve and Continue' : `Approval available in ${Math.max(1, Math.ceil(approvalRemainingMs / 1000))}s`}</button><button type="button" className="ghost" onClick={rejectRun} disabled={controlBusy}>Reject</button></div> : null}{user?.role === 'admin' && selected.presentation?.retryAvailable && !replay ? <div className="agent-plan-controls"><span className="muted">No patient message exists. The approved draft can be retried without regeneration.</span><button type="button" onClick={retryWorkflow} disabled={controlBusy}>{controlBusy ? 'Retrying safely…' : 'Retry failed delivery safely'}</button></div> : null}</article>
+        <article className="card"><div className="agent-panel-heading"><h2>Live workflow pipeline</h2><span className="muted">{visualPipeline ? 'Visual walkthrough: at least four seconds per stage. Backend status is shown separately.' : 'Persisted backend stage status'}</span></div>{visualPipeline ? <p className="agent-visual-note" role="status">Visual simulation · Backend run: {selected.run.status.replaceAll('_', ' ')} · Approval and patient delivery remain server-controlled.</p> : null}<div className="agent-pipeline">{STAGES.map(([phase, label]) => <Stage key={phase} phase={phase} label={label} events={replayEvents} presentation={selected.presentation} visualPipeline={visualPipeline} replay={replay} traceStatus={replay ? null : selected.status}/>)}</div></article>
         {selected.run?.plan?.languageName ? <article className="card agent-language-card"><div className="agent-panel-heading"><h2>Patient language and exact draft</h2><span className="muted">Approval locks this content version</span></div><p><strong>Language:</strong> {selected.run.plan.languageName} ({selected.run.plan.languageCode}) · {selected.run.plan.languageScript} · {selected.run.plan.languageDirection?.toUpperCase()} · {selected.run.plan.languageSource || 'profile'} · {selected.run.plan.languageFallbackUsed ? 'Hindi fallback' : 'No fallback'}</p><div dir={selected.run.plan.languageDirection === 'rtl' ? 'rtl' : 'ltr'}><strong>{sanitizeDraftText(selected.run.plan.notificationTitle || 'Patient notification')}</strong><p>{sanitizeDraftText(selected.run.plan.patientMessage)}</p></div><small>Generation: {selected.run.plan.generationSource || (selected.run.plan.fallbackUsed ? 'deterministic_localized_template' : 'AI')} · {selected.run.messageDrafts?.[0]?.status || 'draft'} · hash {selected.run.messageDrafts?.[0]?.contentHash || 'pending'} · Execution mode: {selected.run.executionMode || 'live'}</small></article> : null}
         {selected.run?.executionSteps?.length ? <article className="card"><div className="agent-panel-heading"><h2>Server-owned delivery steps</h2><span className="muted">The browser cannot authorize delivery</span></div><div className="agent-pipeline">{selected.run.executionSteps.map((step) => <div className={`agent-stage ${step.status}`} key={step.id}><span className="agent-stage-marker" aria-hidden="true">{step.status === 'completed' ? '✓' : step.status === 'failed' ? '!' : '○'}</span><strong>{step.sequence}. {step.title}</strong><small>{step.status}{step.durationMs ? ` · ${step.durationMs} ms` : ''}</small></div>)}</div></article> : null}
         <div className="agent-ops-two-column"><article className="card"><div className="agent-panel-heading"><h2>Action branches</h2><span className="muted">Approval-gated server tools</span></div>{selected.run?.actions?.length ? selected.run.actions.map((action) => <div className="agent-action-branch" key={action.id}><div><strong>{action.title}</strong><span>{action.toolName} · {action.riskLevel} risk</span></div><span className={`agent-status ${action.status}`}>{action.status}</span><small>Approver: {action.approvedById ? shortId(action.approvedById) : 'pending'}{action.result?.reason ? ` · ${action.result.reason}` : ''}</small></div>) : <p className="muted">Actions appear after plan persistence.</p>}</article><article className="card"><div className="agent-panel-heading"><h2>Operational console</h2><button type="button" onClick={() => { setReplay(!replay); setReplayIndex(null); }}>{replay ? 'Stop replay' : 'Replay audit timeline'}</button></div><div className="agent-console">{replayEvents.slice(-12).map((event) => <div key={event.id}>[{phaseLabel(event.phase).toUpperCase()}] {event.title}{event.durationMs ? ` · ${event.durationMs}ms` : ''}</div>)}</div></article></div>
