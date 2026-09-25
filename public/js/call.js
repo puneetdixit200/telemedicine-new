@@ -533,8 +533,11 @@ function ensureSocket() {
     }
   };
 
-  channel.on('broadcast', { event: 'peer_joined' }, async () => {
-    if (cfg.userRole === 'doctor' && pc && roomReady && (currentMode === 'video' || currentMode === 'audio')) {
+  channel.on('broadcast', { event: 'peer_joined' }, async ({ payload }) => {
+    if (!roomReady) return;
+    if (cfg.userRole === 'patient' && payload?.fromRole === 'doctor') {
+      await ensureSocket().emit('join_room');
+    } else if (cfg.userRole === 'doctor' && payload?.fromRole === 'patient' && pc && (currentMode === 'video' || currentMode === 'audio')) {
       logRtc('peer_joined');
       await maybeMakeOffer();
     }
@@ -841,7 +844,6 @@ async function startMode(mode) {
     setStatus('waiting_for_participant');
     await socket.emit('join_room');
     if (disposed) return;
-    if (cfg.userRole === 'doctor') await maybeMakeOffer();
     updateModeControls();
   } catch (e) {
     console.error(e);
