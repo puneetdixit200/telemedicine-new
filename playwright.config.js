@@ -41,7 +41,10 @@ module.exports = defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        launchOptions: chromiumExecutablePath ? { executablePath: chromiumExecutablePath } : undefined
+        launchOptions: {
+          ...(chromiumExecutablePath ? { executablePath: chromiumExecutablePath } : {}),
+          args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream']
+        }
       }
     }
   ]

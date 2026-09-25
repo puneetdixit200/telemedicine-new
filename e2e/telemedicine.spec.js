@@ -118,6 +118,50 @@ test.describe('production demo smoke flows', () => {
     await expect(page.locator('body')).toContainText(/impact|triage|emergency|innovation/i);
   });
 
+  test('admin workflow page renders persisted traces and pipeline stages', async ({ page }) => {
+    await login(page, DEMO_USERS.admin);
+    await page.goto('/admin/ai-agents');
+    await expect(page.getByRole('heading', { name: 'AI Agent Operations Center' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible();
+    await expect(page.locator('.agent-run-card').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Live workflow pipeline' })).toBeVisible();
+    await expect(page.locator('.agent-pipeline').first().locator('.agent-stage')).toHaveCount(11);
+    await expect(page.locator('.agent-ops-sync')).toContainText('Visual updates only: running');
+  });
+
+  test('admin can start a demo no-show workflow and see its approval gate', async ({ browser }) => {
+    test.skip(process.env.TELEMEDICINE_LIVE_WORKFLOW_TEST !== '1', 'Opt-in production workflow mutation');
+    const adminContext = await browser.newContext();
+    const patientContext = await browser.newContext();
+    const adminPage = await adminContext.newPage();
+    const patientPage = await patientContext.newPage();
+    try {
+      await login(adminPage, DEMO_USERS.admin);
+      await login(patientPage, DEMO_USERS.patient);
+      const patientMe = await (await patientPage.request.get('/api/users/me')).json();
+      const patientId = patientMe.user?.id;
+      expect(patientId).toBeTruthy();
+
+      const traces = await (await adminPage.request.get('/api/admin/agents/traces?limit=50')).json();
+      const queued = (traces.rows || []).find((trace) =>
+        trace.agentType === 'no_show_recovery' &&
+        trace.run?.status === 'queued_for_start' &&
+        trace.patient?.id === patientId
+      );
+      expect(queued, 'a queued no-show ticket for the demo patient').toBeTruthy();
+
+      await adminPage.goto('/admin/ai-agents');
+      await adminPage.locator('.agent-run-card').filter({ hasText: queued.id.slice(0, 8) }).click();
+      await adminPage.getByRole('button', { name: 'Start Workflow' }).click();
+      await expect(adminPage.locator('.agent-selected-summary')).toContainText('awaiting approval', { timeout: 120_000 });
+      await expect(adminPage.locator('.agent-pipeline').first()).toContainText('AI Reasoning & Plan Generation');
+      await expect(adminPage.getByRole('button', { name: /Approve and Continue|Approval available in/i })).toBeVisible();
+    } finally {
+      await adminContext.close();
+      await patientContext.close();
+    }
+  });
+
   test('help worker can login and inspect consent support flow', async ({ page }) => {
     await login(page, DEMO_USERS.helper);
 
@@ -126,5 +170,55 @@ test.describe('production demo smoke flows', () => {
 
     await page.goto('/appointments');
     await expect(page.locator('body')).toContainText(/appointment|consent|support|visit/i);
+  });
+
+  test('booked demo patient sees Join Session and can connect video with the doctor', async ({ browser }) => {
+    test.skip(process.env.TELEMEDICINE_LIVE_CALL_TEST !== '1', 'Opt-in production call session');
+    const patientContext = await browser.newContext({ permissions: ['camera', 'microphone'] });
+    const doctorContext = await browser.newContext({ permissions: ['camera', 'microphone'] });
+    const patientPage = await patientContext.newPage();
+    const doctorPage = await doctorContext.newPage();
+    let appointmentId;
+
+    try {
+      await login(patientPage, DEMO_USERS.patient);
+      await login(doctorPage, DEMO_USERS.doctor);
+
+      const patientAppointments = await (await patientPage.request.get('/api/appointments')).json();
+      const doctorAppointments = await (await doctorPage.request.get('/api/appointments')).json();
+      const doctorBookedIds = new Set([
+        ...(doctorAppointments.upcomingAppointments || []),
+        ...(doctorAppointments.doneAppointments || [])
+      ].filter((item) => item.status === 'booked').map((item) => item.id));
+      const appointment = [
+        ...(patientAppointments.upcomingAppointments || []),
+        ...(patientAppointments.doneAppointments || [])
+      ].find(
+        (item) => item.status === 'booked' && item.mode === 'video' && doctorBookedIds.has(item.id)
+      );
+      expect(appointment, 'a booked demo video appointment shared by the patient and doctor').toBeTruthy();
+      appointmentId = appointment.id;
+
+      await patientPage.goto(`/appointments/${appointmentId}`);
+      await expect(patientPage.getByRole('link', { name: /Join Session/i })).toBeVisible();
+      await doctorPage.goto(`/appointments/${appointmentId}`);
+      await expect(doctorPage.getByRole('link', { name: /Join Call/i })).toBeVisible();
+
+      await Promise.all([
+        patientPage.goto(`/calls/${appointmentId}`),
+        doctorPage.goto(`/calls/${appointmentId}`)
+      ]);
+      await expect(patientPage.locator('#status')).toHaveText('pc:connected', { timeout: 45_000 });
+      await expect(doctorPage.locator('#status')).toHaveText('pc:connected', { timeout: 45_000 });
+      for (const page of [patientPage, doctorPage]) {
+        await expect.poll(() => page.locator('#remoteVideo').evaluate(
+          (video) => video.srcObject?.getVideoTracks().some((track) => track.readyState === 'live') || false
+        )).toBe(true);
+      }
+    } finally {
+      if (appointmentId) await patientPage.request.post(`/api/calls/${appointmentId}/end`).catch(() => {});
+      await patientContext.close();
+      await doctorContext.close();
+    }
   });
 });
