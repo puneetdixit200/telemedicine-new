@@ -5680,7 +5680,7 @@ function CallPage() {
         <div className="call-top-right">
           <span className="call-mode-chip">
             <span className="material-symbols-outlined" aria-hidden="true">videocam</span>
-            Mode: {modeText}
+            <span id="callModeLabel">Mode: {modeText}</span>
           </span>
           <span id="status" className="call-status-chip">idle</span>
         </div>
@@ -5689,7 +5689,7 @@ function CallPage() {
       <main className="call-sanctuary-main">
         <div className="call-safety-tip" role="status">
           <span className="material-symbols-outlined" aria-hidden="true">network_check</span>
-          <p>If your network drops, stay on this screen. The session will reconnect automatically when possible.</p>
+          <p id="callConnectionHelp">Allow microphone and camera access. Both participants must open this appointment’s call page.</p>
         </div>
 
         <section className="call-video-stage">
@@ -5775,6 +5775,14 @@ function CallPage() {
           <button id="btnCamera" className="call-control-btn" type="button">
             <span className="material-symbols-outlined" aria-hidden="true">photo_camera</span>
             <span data-label>Camera</span>
+          </button>
+          <button id="btnRetryCall" className="call-control-btn" type="button">
+            <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
+            <span>Retry connection</span>
+          </button>
+          <button id="btnResumeCallAudio" className="call-control-btn" type="button" hidden>
+            <span className="material-symbols-outlined" aria-hidden="true">volume_up</span>
+            <span>Enable call sound</span>
           </button>
         </div>
 

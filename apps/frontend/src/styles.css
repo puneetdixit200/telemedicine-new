@@ -5940,6 +5940,10 @@ img.sanctuary-home-specialty-icon {
   border-color: #9fd9d0;
 }
 
+.call-control-btn[hidden] {
+  display: none;
+}
+
 .call-control-btn:disabled {
   opacity: 0.48;
   cursor: not-allowed;

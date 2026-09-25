@@ -430,6 +430,9 @@ Current scope is wrapper readiness for the web app bundle (not native feature pa
 - Verify `APP_BASE_URL` is set to correct HTTPS origins
 - Confirm `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are available to the browser
 - Confirm Supabase Realtime is reachable from the deployed app
+- A signaling connection is not an audio/video connection. Production needs a TURN relay for networks where direct peer connections are blocked. Set all three Vercel production variables: `WEBRTC_TURN_URL` (comma-separated provider URLs), `WEBRTC_TURN_USERNAME`, and `WEBRTC_TURN_CREDENTIAL`, then redeploy. Use your own provider's credentials; never commit them or use an untrusted public relay. Include the provider's TCP/TLS option for restrictive networks.
+- Both participants should refresh after a call-runtime deployment. Allow microphone/camera access, use **Retry connection** if connection times out, and **Enable call sound** if the browser blocks playback. The call page reports a missing relay when connection setup times out.
+- The opt-in `e2e/call-media.spec.js` checks received audio bytes, decoded video frames, playback, independent mode changes, audio-only startup, refresh and retry using demo accounts and an isolated Realtime topic. Run with `TELEMEDICINE_LIVE_CALL_TEST=1 PLAYWRIGHT_SKIP_WEBSERVER=1 PLAYWRIGHT_BASE_URL=https://your-site.example npx playwright test e2e/call-media.spec.js`. It uses synthetic media on one test host; it does not certify real microphone/speaker hardware, Safari, or different-network connectivity. Final acceptance requires a doctor and patient on separate networks, including a relay-only connectivity test with valid TURN credentials.
 
 ### 18.5 AI provider fallback behavior
 - If OpenRouter/Ollama is unavailable or model output fails validation, the bounded agent workflow can use deterministic fallback where supported

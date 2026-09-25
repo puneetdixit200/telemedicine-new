@@ -12,6 +12,9 @@ if (!cfg) {
 const statusEl = document.getElementById('status');
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
+const connectionHelp = document.getElementById('callConnectionHelp');
+const btnRetryCall = document.getElementById('btnRetryCall');
+const btnResumeCallAudio = document.getElementById('btnResumeCallAudio');
 
 const btnVideo = document.getElementById('btnVideo');
 const btnAudio = document.getElementById('btnAudio');
@@ -39,6 +42,8 @@ let makingOffer = false;
 let ignoreOffer = false;
 let isSettingRemoteAnswerPending = false;
 let reconnectDegradeTimer = null;
+let connectionWaitTimer = null;
+let modeQueue = Promise.resolve();
 const pendingIceCandidates = [];
 let hasShownDataSaverNotice = false;
 const QUALITY_PREFERENCE_KEY = 'call:qualityPreference';
@@ -71,6 +76,38 @@ function logRtc(event, details = {}) {
 
 function setStatus(s) {
   statusEl.textContent = s;
+  if (s === 'pc:connected') {
+    clearConnectionWait();
+    if (connectionHelp) connectionHelp.textContent = 'Call connected. If you cannot hear the other participant, check microphone permissions and your sound output.';
+  } else if (s === 'waiting_for_participant' || s === 'pc:connecting') {
+    if (connectionHelp) connectionHelp.textContent = 'Connecting. Both participants must be on this appointment’s call page with microphone access allowed.';
+    if (!connectionWaitTimer) connectionWaitTimer = setTimeout(() => {
+      connectionWaitTimer = null;
+      if (disposed || currentMode === 'text' || pc?.connectionState === 'connected') return;
+      statusEl.textContent = 'connection_timed_out';
+      const hasRelay = cfg.iceServers?.some((server) => [].concat(server.urls).some((url) => /^turns?:/.test(url)));
+      if (connectionHelp) connectionHelp.textContent = hasRelay
+        ? 'Call could not connect. Confirm both participants are here, then use Retry connection. Try another network if needed.'
+        : 'Call could not connect. Use Retry connection or try another network. The site has no TURN relay configured, which is needed on some networks; contact the site administrator.';
+    }, 20000);
+  }
+}
+
+function clearConnectionWait() {
+  if (connectionWaitTimer) clearTimeout(connectionWaitTimer);
+  connectionWaitTimer = null;
+}
+
+async function playRemoteMedia() {
+  if (!remoteVideo.srcObject || disposed) return;
+  try {
+    await remoteVideo.play();
+    if (btnResumeCallAudio) btnResumeCallAudio.hidden = true;
+  } catch (_error) {
+    if (disposed) return;
+    if (btnResumeCallAudio) btnResumeCallAudio.hidden = false;
+    if (connectionHelp) connectionHelp.textContent = 'Your browser paused call playback. Select Enable call sound to hear and see the other participant.';
+  }
 }
 
 function connectionInfo() {
@@ -166,7 +203,7 @@ async function applyQualityPreference(preference, options = {}) {
     appendChat(`[System] ${qualityLabel(qualityPreference)} selected.`);
   }
 
-  if (qualityPreference === 'saver' && currentMode === 'video') {
+  if (roomReady && qualityPreference === 'saver' && currentMode === 'video') {
     appendChat('[System] Data Saver selected. Switching to audio to reduce data usage.');
     await startMode('audio');
   }
@@ -208,7 +245,7 @@ function updateConnectivityHint() {
   }
 
   if (statusEl.textContent === 'offline' || statusEl.textContent.startsWith('weak_network')) {
-    setStatus('connected');
+    setStatus(pc?.connectionState === 'connected' ? 'pc:connected' : 'waiting_for_participant');
   }
 }
 
@@ -230,6 +267,8 @@ function setControlActive(button, active) {
 }
 
 function updateModeControls() {
+  const modeLabel = document.getElementById('callModeLabel');
+  if (modeLabel) modeLabel.textContent = `Mode: ${currentMode}`;
   setControlActive(btnVideo, currentMode === 'video');
   setControlActive(btnAudio, currentMode === 'audio');
   setControlActive(btnText, currentMode === 'text');
@@ -275,6 +314,7 @@ function stopLocalMedia() {
 }
 
 function disposePeerConnection() {
+  clearConnectionWait();
   clearRemoteDataWatchdog();
   if (!pc) return;
   try {
@@ -544,9 +584,10 @@ function ensureSocket() {
   });
 
   channel.on('broadcast', { event: 'signal' }, async ({ payload }) => {
+    const { type, payload: signalPayload } = payload || {};
     try {
-      const { type, payload: signalPayload } = payload || {};
-      if (!roomReady) return;
+      if (payload?.fromRole === cfg.userRole) return;
+      if (!roomReady || currentMode === 'text') return;
       if (!pc) await setupPeerConnection();
 
       if (type === 'offer') {
@@ -575,6 +616,14 @@ function ensureSocket() {
         }
 
         logRtc('remote_offer_applied');
+        // Reserve send capability even when answering in audio-only mode, so
+        // replaceTrack can later enable video without rebuilding the transport.
+        for (const transceiver of pc.getTransceivers()) {
+          if (transceiver.stopped) continue;
+          transceiver.direction = 'sendrecv';
+          const track = localStream?.getTracks().find((item) => item.kind === transceiver.receiver.track.kind) || null;
+          if (transceiver.sender.track !== track) await transceiver.sender.replaceTrack(track);
+        }
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         ensureSocket()
@@ -642,7 +691,7 @@ function ensureSocket() {
 
   channel.subscribe((status) => {
     if (status === 'SUBSCRIBED') {
-      setStatus('connected');
+      if (!roomReady) setStatus('signaling_ready');
       resolveReady();
       if (roomReady) signaling.emit('join_room').catch((error) => console.error('[CALL][RTC] join send failed', error));
       return;
@@ -666,9 +715,8 @@ function waitForSignalingReady(socket) {
 }
 
 async function setupLocalMedia(mode) {
-  stopLocalMedia();
-
   if (mode === 'text') {
+    stopLocalMedia();
     localVideo.srcObject = null;
     updateModeControls();
     return;
@@ -695,7 +743,26 @@ async function setupLocalMedia(mode) {
             }
           };
 
-  localStream = await navigator.mediaDevices.getUserMedia(constraints);
+  const nextStream = await navigator.mediaDevices.getUserMedia(constraints);
+  if (disposed) {
+    nextStream.getTracks().forEach((track) => track.stop());
+    return;
+  }
+  // Preserve the negotiated transport when changing modes. Rebuilding only one
+  // participant's peer connection strands the other participant's ICE/SDP state.
+  try {
+    if (pc) {
+      for (const transceiver of pc.getTransceivers()) {
+        const kind = transceiver.receiver.track.kind;
+        await transceiver.sender.replaceTrack(nextStream.getTracks().find((track) => track.kind === kind) || null);
+      }
+    }
+  } catch (error) {
+    nextStream.getTracks().forEach((track) => track.stop());
+    throw error;
+  }
+  stopLocalMedia();
+  localStream = nextStream;
   localVideo.srcObject = localStream;
   isMuted = false;
   isCameraOff = false;
@@ -719,7 +786,12 @@ async function setupPeerConnection() {
 
   pc.ontrack = (event) => {
     logRtc('remote_track_received', { streams: event.streams ? event.streams.length : 0 });
-    remoteVideo.srcObject = event.streams[0];
+    if (event.streams?.[0]) remoteVideo.srcObject = event.streams[0];
+    else {
+      if (!remoteVideo.srcObject) remoteVideo.srcObject = new MediaStream();
+      remoteVideo.srcObject.addTrack(event.track);
+    }
+    playRemoteMedia();
   };
 
   pc.onconnectionstatechange = () => {
@@ -729,6 +801,7 @@ async function setupPeerConnection() {
     if (pc.connectionState === 'connected') {
       clearDegradeTimer();
       startRemoteDataWatchdog('peer_connected');
+      playRemoteMedia();
       return;
     }
 
@@ -749,8 +822,15 @@ async function setupPeerConnection() {
     logRtc('signaling_state_change', { signalingState: pc.signalingState, isSettingRemoteAnswerPending });
   };
 
-  if (localStream) {
-    for (const track of localStream.getTracks()) {
+  // Negotiate both kinds up front so upgrading an audio call does not require
+  // replacing the connection or racing a new offer against the remote peer.
+  for (const kind of ['audio', 'video']) {
+    const track = localStream?.getTracks().find((item) => item.kind === kind);
+    if (cfg.userRole === 'doctor') {
+      pc.addTransceiver(track || kind, { direction: 'sendrecv', streams: localStream ? [localStream] : [] });
+    } else if (track) {
+      // addTrack allows the answerer's sender to be matched to the incoming
+      // offer. Pre-creating answerer transceivers would leave duplicate m-lines.
       pc.addTrack(track, localStream);
     }
   }
@@ -761,7 +841,7 @@ async function setupPeerConnection() {
 async function maybeMakeOffer() {
   if (!pc) return;
   await ensureSocket().ready;
-  if (pc.signalingState !== 'stable') {
+  if (!pc || makingOffer || pc.signalingState !== 'stable') {
     logRtc('skip_offer_non_stable');
     return;
   }
@@ -779,9 +859,21 @@ async function maybeMakeOffer() {
   }
 }
 
-async function startMode(mode) {
+function startMode(mode) {
+  const next = modeQueue.then(() => applyMode(mode));
+  modeQueue = next.catch(() => {});
+  return next;
+}
+
+async function applyMode(mode) {
   if (disposed) return;
-  roomReady = false;
+  if (roomReady && currentMode === mode && pc && localStream &&
+      localStream.getTracks().every((track) => track.readyState === 'live')) {
+    return;
+  }
+  // An established peer must still receive signaling while camera permission
+  // or replacement tracks are pending during a mode change.
+  if (!pc) roomReady = false;
   clearDegradeTimer();
   clearRemoteDataWatchdog();
 
@@ -794,11 +886,6 @@ async function startMode(mode) {
       hasShownDataSaverNotice = true;
     }
     mode = 'audio';
-  }
-
-  if (currentMode !== mode) {
-    disposePeerConnection();
-    stopLocalMedia();
   }
 
   currentMode = mode;
@@ -841,8 +928,13 @@ async function startMode(mode) {
     await setupPeerConnection();
     if (disposed) return;
     roomReady = true;
-    setStatus('waiting_for_participant');
-    await socket.emit('join_room');
+    if (pc.connectionState === 'connected') {
+      setStatus('pc:connected');
+      startRemoteDataWatchdog('mode_changed');
+    } else {
+      setStatus('waiting_for_participant');
+      await socket.emit('join_room');
+    }
     if (disposed) return;
     updateModeControls();
   } catch (e) {
@@ -850,13 +942,13 @@ async function startMode(mode) {
     if (mode === 'video') {
       setStatus('video_error_fallback_audio');
       appendChat('[System] Video unavailable. Switched to audio mode.');
-      await startMode('audio');
+      await applyMode('audio');
       return;
     }
     if (mode === 'audio') {
       setStatus('audio_error_fallback_text');
       appendChat('[System] Audio unavailable. Switched to text mode.');
-      await startMode('text');
+      await applyMode('text');
       return;
     }
     setStatus('media_error');
@@ -876,6 +968,19 @@ function runMode(mode) {
 btnVideo.addEventListener('click', () => runMode('video'));
 btnAudio.addEventListener('click', () => runMode('audio'));
 btnText.addEventListener('click', () => runMode('text'));
+btnRetryCall?.addEventListener('click', () => {
+  // Queue retries with mode changes so two getUserMedia requests cannot race.
+  modeQueue = modeQueue.then(async () => {
+    if (disposed) return;
+    disposePeerConnection();
+    roomReady = false;
+    await applyMode(currentMode === 'text' ? cfg.defaultMode : currentMode);
+  }).catch((error) => {
+    console.error('[CALL][RTC] retry failed', error);
+    setStatus('call_error');
+  });
+});
+btnResumeCallAudio?.addEventListener('click', playRemoteMedia);
 if (btnDataQuality) {
   btnDataQuality.addEventListener('click', () => {
     cycleQualityPreference().catch((e) => {
@@ -951,6 +1056,9 @@ if (chatLanguageSelect) {
 
 if (endCallButton) {
   endCallButton.addEventListener('click', () => {
+    disposed = true;
+    roomReady = false;
+    clearDegradeTimer();
     setStatus('ending');
     ensureSocket()
       .emit('call_ended', { appointmentId: cfg.appointmentId })
