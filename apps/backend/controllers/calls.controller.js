@@ -66,6 +66,18 @@ const callsController = {
       }
 
       const presence = getAppointmentPresence(appt);
+      const supabaseUrl = getSupabaseUrl();
+      const supabaseAnonKey = getSupabaseAnonKey();
+      if (!supabaseUrl || !supabaseAnonKey) {
+        return res.status(500).render('dashboard', {
+          user: req.user,
+          message: 'Realtime calling is not configured.'
+        });
+      }
+      const iceServers = [{ urls: ['stun:stun.l.google.com:19302'] }];
+      if (process.env.WEBRTC_TURN_URL && process.env.WEBRTC_TURN_USERNAME && process.env.WEBRTC_TURN_CREDENTIAL) {
+        iceServers.push({ urls: process.env.WEBRTC_TURN_URL.split(',').map((url) => url.trim()), username: process.env.WEBRTC_TURN_USERNAME, credential: process.env.WEBRTC_TURN_CREDENTIAL });
+      }
       const startedAt = new Date();
       let callSession = await prisma.callSession.upsert({
         where: { appointmentId },
@@ -84,22 +96,13 @@ const callsController = {
 
       const history = await loadPatientHistory(appt);
 
-      const supabaseUrl = getSupabaseUrl();
-      const supabaseAnonKey = getSupabaseAnonKey();
-      if (!supabaseUrl || !supabaseAnonKey) {
-        return res.status(500).render('dashboard', {
-          user: req.user,
-          message: 'Realtime calling is not configured.'
-        });
-      }
-
       const callConfigJson = JSON.stringify({
         appointmentId: appt.id,
         supabaseUrl,
         supabaseAnonKey,
         realtimeTopic: `call:${appt.id}`,
         userRole: req.user.role,
-        iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
+        iceServers,
         defaultMode: appt.mode
       });
       const callConfigEncoded = encodeURIComponent(callConfigJson);
@@ -109,7 +112,7 @@ const callsController = {
         appointment: appt,
         presence,
         history,
-        iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
+        iceServers,
         callConfigJson,
         callConfigEncoded
       });

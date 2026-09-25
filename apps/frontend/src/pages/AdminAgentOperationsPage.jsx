@@ -61,6 +61,7 @@ export default function AdminAgentOperationsPage({ user }) {
   const [replay, setReplay] = useState(false);
   const [replayIndex, setReplayIndex] = useState(null);
   const [controlBusy, setControlBusy] = useState(false);
+  const [controlError, setControlError] = useState('');
   const manualSelectionRef = useRef(false);
   const pausedRef = useRef(paused);
   const eventIds = useRef(new Set());
@@ -195,7 +196,7 @@ export default function AdminAgentOperationsPage({ user }) {
     };
   }, [sync, user?.id, user?.role]);
 
-  const selected = detail || traces.find((trace) => trace.id === selectedId);
+  const selected = detail?.id === selectedId ? detail : traces.find((trace) => trace.id === selectedId);
   const filteredTraces = useMemo(() => traces.filter((trace) => filter === 'all' || trace.status === filter || (filter === 'real-ai' && trace.run?.plan?.fallbackUsed === false) || (filter === 'fallback' && trace.run?.plan?.fallbackUsed === true)), [filter, traces]);
   const events = selected?.events || [];
   const visibleEvents = events.filter((event) => eventFilter === 'all' || event.phase === eventFilter);
@@ -205,7 +206,7 @@ export default function AdminAgentOperationsPage({ user }) {
 
   useEffect(() => {
     const status = selected?.run?.status;
-    if (!selectedId || paused || replay || !['planned', 'awaiting_approval', 'executing'].includes(status)) return undefined;
+    if (!selectedId || paused || replay || !['queued_for_start', 'planned', 'awaiting_approval', 'executing'].includes(status)) return undefined;
     let cancelled = false;
     const refreshPresentation = async () => {
       const response = await apiRequest(`/api/admin/agents/traces/${selectedId}`);
@@ -226,38 +227,40 @@ export default function AdminAgentOperationsPage({ user }) {
     if (refreshed.ok) setDetail(refreshed.data.trace);
   };
 
+  const runControl = async (path, body) => {
+    setControlBusy(true);
+    setControlError('');
+    try {
+      const response = await apiRequest(path, { method: 'POST', ...(body ? { body } : {}) });
+      if (!response.ok) setControlError(response.data?.error || 'Workflow request failed. Please refresh and try again.');
+      await refreshSelected();
+    } catch (_error) {
+      setControlError('Connection failed. The workflow status will keep refreshing; check before retrying.');
+    } finally {
+      setControlBusy(false);
+    }
+  };
+
   const approveAndRun = async () => {
     if (!selected?.run?.id || controlBusy || !approvalReady) return;
-    setControlBusy(true);
     const actionIds = (selected.run.actions || []).filter((action) => action.status === 'proposed').map((action) => action.id);
-    const response = await apiRequest(`/api/admin/agents/runs/${selected.run.id}/approve-and-continue`, { method: 'POST', body: { actionIds } });
-    setControlBusy(false);
-    if (response.ok || response.status === 202) await refreshSelected();
+    await runControl(`/api/admin/agents/runs/${selected.run.id}/approve-and-continue`, { actionIds });
   };
 
   const startWorkflow = async () => {
     if (!selected?.run?.id || controlBusy) return;
-    setControlBusy(true);
-    const response = await apiRequest(`/api/admin/agents/runs/${selected.run.id}/start`, { method: 'POST' });
-    setControlBusy(false);
-    if (response.ok || response.status === 202) await refreshSelected();
+    await runControl(`/api/admin/agents/runs/${selected.run.id}/start`);
   };
 
   const retryWorkflow = async () => {
     if (!selected?.run?.id || controlBusy || !selected?.presentation?.retryAvailable) return;
-    setControlBusy(true);
-    const response = await apiRequest(`/api/admin/agents/runs/${selected.run.id}/retry`, { method: 'POST' });
-    setControlBusy(false);
-    if (response.ok || response.status === 202) await refreshSelected();
+    await runControl(`/api/admin/agents/runs/${selected.run.id}/retry`);
   };
 
   const rejectRun = async () => {
     if (!selected?.run?.id || controlBusy) return;
-    setControlBusy(true);
     const actionIds = (selected.run.actions || []).filter((action) => ['proposed', 'approved'].includes(action.status)).map((action) => action.id);
-    const response = await apiRequest(`/api/agents/runs/${selected.run.id}/reject`, { method: 'POST', body: { actionIds, reason: 'Rejected by administrator.' } });
-    setControlBusy(false);
-    if (response.ok) await refreshSelected();
+    await runControl(`/api/agents/runs/${selected.run.id}/reject`, { actionIds, reason: 'Rejected by administrator.' });
   };
 
   useEffect(() => {
@@ -274,6 +277,7 @@ export default function AdminAgentOperationsPage({ user }) {
       <div><p className="kicker">Restricted operations view</p><h1>AI Agent Operations Center</h1><p className="muted">Persisted workflow telemetry for No-Show Recovery and Post-Visit Follow-Up.</p></div>
       <div className="agent-ops-header-actions"><span className={`agent-connection ${connection.toLowerCase().replaceAll(' ', '-')}`}>{connection}</span><span className="agent-env-badge">Production</span><button type="button" onClick={() => setPaused((value) => !value)}>{paused ? 'Resume view' : 'Pause view'}</button><button type="button" onClick={() => setPresentation((value) => !value)}>{presentation ? 'Exit presentation' : 'Presentation'}</button><button type="button" onClick={() => sync()}>Refresh</button></div>
     </header>
+    {controlError ? <p className="error" role="alert">{controlError}</p> : null}
     <div className="agent-ops-sync" aria-live="polite">Last synchronized: {lastSync ? utcDateTime(lastSync) : 'waiting'} · Visual updates only: {paused ? 'paused' : 'running'} {replay ? '· Historical replay' : ''}</div>
     <div className="agent-ops-metrics"><Metric label="Active agents" value={overview.activeRuns || 0} tone="blue"/><Metric label="Awaiting approval" value={overview.awaitingApproval || 0}/><Metric label="Executing" value={overview.executing || 0}/><Metric label="Completed today" value={overview.completedToday || 0} tone="green"/><Metric label="Failed today" value={overview.failedToday || 0} tone="red"/><Metric label="Real-AI success" value={`${overview.realAiSuccessRate || 0}%`} tone="purple"/><Metric label="Fallback rate" value={`${overview.fallbackRate || 0}%`} tone="amber"/><Metric label="Avg total duration" value={`${overview.averageTotalRunDurationMs || 0} ms`}/></div>
     <div className="agent-ops-layout">

@@ -127,4 +127,20 @@ describe('call session timing hardening', () => {
     }));
     expect(res.redirectTo).toBe('/appointments/appt-1');
   });
+
+  test('passes configured TURN relay to authorized participants', async () => {
+    process.env.WEBRTC_TURN_URL = 'turn:relay.example.com:3478';
+    process.env.WEBRTC_TURN_USERNAME = 'test-user';
+    process.env.WEBRTC_TURN_CREDENTIAL = 'test-secret';
+    try {
+      prisma.callSession.upsert.mockResolvedValue({ appointmentId: 'appt-1', status: 'in_progress', startedAt: new Date() });
+      const res = response();
+      await callsController.viewCall({ params: { appointmentId: 'appt-1' }, user: { id: 'patient-1', role: 'patient' } }, res, jest.fn());
+      expect(JSON.parse(res.rendered.locals.callConfigJson).iceServers).toContainEqual({ urls: ['turn:relay.example.com:3478'], username: 'test-user', credential: 'test-secret' });
+    } finally {
+      delete process.env.WEBRTC_TURN_URL;
+      delete process.env.WEBRTC_TURN_USERNAME;
+      delete process.env.WEBRTC_TURN_CREDENTIAL;
+    }
+  });
 });

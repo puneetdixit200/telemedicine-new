@@ -1,4 +1,5 @@
-/* global supabase, RTCPeerConnection, RTCSessionDescription, RTCIceCandidate */
+/* global RTCPeerConnection, RTCSessionDescription, RTCIceCandidate */
+(function () {
 
 const configNode = document.getElementById('callRuntimeConfig');
 const encodedConfig = configNode ? configNode.getAttribute('data-call-config') : null;
@@ -29,6 +30,8 @@ const endCallButton = document.querySelector('.call-end-btn');
 let signaling;
 let pc;
 let localStream;
+let roomReady = false;
+let disposed = false;
 let currentMode = cfg.defaultMode;
 let isMuted = false;
 let isCameraOff = false;
@@ -46,15 +49,12 @@ let chatTranslationEnabled = false;
 let chatTargetLanguage = 'English';
 const translationCache = new Map();
 const SIGNALING_READY_TIMEOUT_MS = 8000;
-const REMOTE_DATA_TIMEOUT_MS = 5000;
+const REMOTE_DATA_TIMEOUT_MS = 15000;
 const REMOTE_DATA_CHECK_INTERVAL_MS = 1000;
-const REMOTE_DATA_RELOAD_COOLDOWN_MS = 30000;
-const CALL_AUTO_RELOAD_STORAGE_KEY = `call:autoReload:${cfg.appointmentId}`;
 let remoteEndInProgress = false;
 let remoteDataWatchdogTimer = null;
 let lastRemoteDataAt = 0;
 let lastRemotePayloadReceived = 0;
-let autoReloadPending = false;
 
 // Doctor acts as the stable offerer by default; patient is the polite peer.
 const isPolitePeer = cfg.userRole === 'patient';
@@ -290,38 +290,15 @@ function disposePeerConnection() {
   pendingIceCandidates.length = 0;
 }
 
-function canAutoReloadCall() {
-  try {
-    const lastReloadedAt = Number(window.sessionStorage.getItem(CALL_AUTO_RELOAD_STORAGE_KEY) || '0');
-    return !lastReloadedAt || Date.now() - lastReloadedAt > REMOTE_DATA_RELOAD_COOLDOWN_MS;
-  } catch (_err) {
-    return true;
-  }
-}
-
-function markAutoReloadCall() {
-  try {
-    window.sessionStorage.setItem(CALL_AUTO_RELOAD_STORAGE_KEY, String(Date.now()));
-  } catch (_err) {}
-}
-
-function reloadCallPageForDataStall(reason) {
-  if (autoReloadPending || remoteEndInProgress) return;
-
-  if (!canAutoReloadCall()) {
-    logRtc('remote_data_reload_suppressed', { reason });
-    return;
-  }
-
-  autoReloadPending = true;
-  markAutoReloadCall();
-  logRtc('remote_data_stalled_reload', { reason });
-  setStatus('reloading_call');
-  appendChat('[System] Call data stopped coming through. Refreshing the room...');
-
-  setTimeout(() => {
-    window.location.reload();
-  }, 250);
+function recoverRemoteDataFlow() {
+  if (remoteEndInProgress || !pc) return;
+  logRtc('remote_data_stalled_reconnect');
+  setStatus('reconnecting_media');
+  lastRemoteDataAt = Date.now();
+  pc.restartIce?.();
+  const request = cfg.userRole === 'doctor' ? maybeMakeOffer() : ensureSocket().emit('join_room');
+  request.catch((error) => console.error('[CALL][RTC] reconnect failed', error));
+  scheduleAutoDowngrade('remote_data_stalled');
 }
 
 function clearRemoteDataWatchdog() {
@@ -346,7 +323,7 @@ function remotePayloadFromStatsReport(report) {
 
 async function checkRemoteDataFlow() {
   const observedPc = pc;
-  if (!observedPc || currentMode === 'text' || remoteEndInProgress || autoReloadPending) {
+  if (!observedPc || currentMode === 'text' || remoteEndInProgress) {
     clearRemoteDataWatchdog();
     return;
   }
@@ -371,12 +348,12 @@ async function checkRemoteDataFlow() {
   }
 
   if (lastRemoteDataAt && Date.now() - lastRemoteDataAt >= REMOTE_DATA_TIMEOUT_MS) {
-    reloadCallPageForDataStall('remote_payload_timeout');
+    recoverRemoteDataFlow();
   }
 }
 
 function startRemoteDataWatchdog(reason) {
-  if (currentMode === 'text' || remoteEndInProgress || autoReloadPending) return;
+  if (currentMode === 'text' || remoteEndInProgress) return;
   lastRemoteDataAt = Date.now();
 
   if (!remoteDataWatchdogTimer) {
@@ -473,12 +450,12 @@ async function translateTextForChat(text, targetLanguage) {
 
 function ensureSocket() {
   if (signaling) return signaling;
-  if (!window.supabase || !cfg.supabaseUrl || !cfg.supabaseAnonKey) {
+  if (!window.__telemedicineCreateSupabaseClient || !cfg.supabaseUrl || !cfg.supabaseAnonKey) {
     setStatus('signaling_unavailable');
     throw new Error('Supabase Realtime is not configured.');
   }
 
-  const client = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+  const client = window.__telemedicineCreateSupabaseClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false
@@ -557,7 +534,7 @@ function ensureSocket() {
   };
 
   channel.on('broadcast', { event: 'peer_joined' }, async () => {
-    if (pc && (currentMode === 'video' || currentMode === 'audio')) {
+    if (cfg.userRole === 'doctor' && pc && roomReady && (currentMode === 'video' || currentMode === 'audio')) {
       logRtc('peer_joined');
       await maybeMakeOffer();
     }
@@ -566,6 +543,7 @@ function ensureSocket() {
   channel.on('broadcast', { event: 'signal' }, async ({ payload }) => {
     try {
       const { type, payload: signalPayload } = payload || {};
+      if (!roomReady) return;
       if (!pc) await setupPeerConnection();
 
       if (type === 'offer') {
@@ -663,9 +641,7 @@ function ensureSocket() {
     if (status === 'SUBSCRIBED') {
       setStatus('connected');
       resolveReady();
-      signaling
-        .emit('join_room', { appointmentId: cfg.appointmentId })
-        .catch((error) => console.error('[CALL][RTC] join send failed', error));
+      if (roomReady) signaling.emit('join_room').catch((error) => console.error('[CALL][RTC] join send failed', error));
       return;
     }
 
@@ -727,7 +703,7 @@ async function setupPeerConnection() {
   if (pc) return pc;
 
   pc = new RTCPeerConnection({ iceServers: cfg.iceServers });
-  logRtc('pc_created', { isPolitePeer, iceServers: cfg.iceServers });
+  logRtc('pc_created', { isPolitePeer, iceServerCount: cfg.iceServers?.length || 0 });
 
   pc.onicecandidate = (event) => {
     if (event.candidate) {
@@ -741,7 +717,6 @@ async function setupPeerConnection() {
   pc.ontrack = (event) => {
     logRtc('remote_track_received', { streams: event.streams ? event.streams.length : 0 });
     remoteVideo.srcObject = event.streams[0];
-    startRemoteDataWatchdog('remote_track');
   };
 
   pc.onconnectionstatechange = () => {
@@ -755,7 +730,10 @@ async function setupPeerConnection() {
     }
 
     if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-      startRemoteDataWatchdog(`connection_${pc.connectionState}`);
+      clearRemoteDataWatchdog();
+      pc.restartIce?.();
+      if (cfg.userRole === 'doctor') maybeMakeOffer().catch((error) => console.error('[CALL][RTC] ICE restart failed', error));
+      else ensureSocket().emit('join_room').catch((error) => console.error('[CALL][RTC] reconnect request failed', error));
       scheduleAutoDowngrade(`connection_${pc.connectionState}`);
     }
   };
@@ -799,6 +777,8 @@ async function maybeMakeOffer() {
 }
 
 async function startMode(mode) {
+  if (disposed) return;
+  roomReady = false;
   clearDegradeTimer();
   clearRemoteDataWatchdog();
 
@@ -821,8 +801,9 @@ async function startMode(mode) {
   currentMode = mode;
   updateModeControls();
 
+  let socket;
   try {
-    const socket = ensureSocket();
+    socket = ensureSocket();
     await waitForSignalingReady(socket);
   } catch (error) {
     console.error('[CALL][RTC] signaling unavailable', error);
@@ -840,6 +821,8 @@ async function startMode(mode) {
   if (mode === 'text') {
     disposePeerConnection();
     stopLocalMedia();
+    roomReady = true;
+    await socket.emit('join_room');
     setStatus('text');
     updateModeControls();
     return;
@@ -848,9 +831,17 @@ async function startMode(mode) {
   try {
     setStatus('starting_media');
     await setupLocalMedia(mode);
+    if (disposed) {
+      stopLocalMedia();
+      return;
+    }
     await setupPeerConnection();
-    await maybeMakeOffer();
-    setStatus('in_call');
+    if (disposed) return;
+    roomReady = true;
+    setStatus('waiting_for_participant');
+    await socket.emit('join_room');
+    if (disposed) return;
+    if (cfg.userRole === 'doctor') await maybeMakeOffer();
     updateModeControls();
   } catch (e) {
     console.error(e);
@@ -988,3 +979,19 @@ connection?.addEventListener?.('change', updateConnectivityHint);
 updateConnectivityHint();
 
 window.__telemedicineCallReady = true;
+window.__telemedicineCallCleanup = () => {
+  disposed = true;
+  roomReady = false;
+  clearDegradeTimer();
+  clearRemoteDataWatchdog();
+  disposePeerConnection();
+  stopLocalMedia();
+  signaling?.disconnect();
+  signaling = null;
+  window.removeEventListener('online', updateConnectivityHint);
+  window.removeEventListener('offline', updateConnectivityHint);
+  connection?.removeEventListener?.('change', updateConnectivityHint);
+  delete window.__telemedicineCallReady;
+  delete window.__telemedicineCallCleanup;
+};
+})();

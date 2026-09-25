@@ -10,6 +10,7 @@ import {
   useParams
 } from 'react-router-dom';
 import QRCode from 'qrcode';
+import { createClient } from '@supabase/supabase-js';
 import { apiRequest, utcDateTime } from './lib/api';
 import TranslationService from './TranslationService';
 import InnovationHubPage from './pages/InnovationHubPage';
@@ -3948,7 +3949,7 @@ function PdfPreviewPage() {
   );
 }
 
-function useApiPage(path) {
+function useApiPage(path, { cache = true } = {}) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [cacheMeta, setCacheMeta] = useState({ fromCache: false, cachedAt: null });
@@ -3956,6 +3957,7 @@ function useApiPage(path) {
   const [loading, setLoading] = useState(true);
 
   const readCached = useCallback(() => {
+    if (!cache) return null;
     try {
       const raw = window.localStorage.getItem(`api-cache:${path}`);
       if (!raw) return null;
@@ -3967,10 +3969,11 @@ function useApiPage(path) {
     } catch (_err) {
       return null;
     }
-  }, [path]);
+  }, [path, cache]);
 
   const writeCached = useCallback(
     (value) => {
+      if (!cache) return;
       try {
         window.localStorage.setItem(
           `api-cache:${path}`,
@@ -3981,7 +3984,7 @@ function useApiPage(path) {
         );
       } catch (_err) {}
     },
-    [path]
+    [path, cache]
   );
 
   const load = useCallback(async () => {
@@ -4993,7 +4996,7 @@ function AppointmentDetailPage() {
 
             <section className="patient-appointment-action-card">
               <div className="patient-mobile-primary-actions">
-                {data.presence?.canStartCall ? (
+                {appointment.status === 'booked' ? (
                   <Link className="patient-appointment-cta primary" to={`/calls/${appointment.id}`}>
                     <span className="material-symbols-outlined" aria-hidden="true">videocam</span>
                     Join Session
@@ -5365,7 +5368,7 @@ function AppointmentDetailPage() {
               </div>
             </div>
 
-            {data.presence?.canStartCall ? (
+            {appointment.status === 'booked' ? (
               <Link className="doctor-appointment-start-btn" to={`/calls/${appointment.id}`}>
                 <span className="material-symbols-outlined" aria-hidden="true">video_call</span>
                 Start Consultation
@@ -5416,7 +5419,7 @@ function AppointmentDetailPage() {
             </div>
 
             <div className="doctor-appointment-actions">
-              {data.presence?.canStartCall ? (
+              {appointment.status === 'booked' ? (
                 <Link className="doctor-appointment-action-main" to={`/calls/${appointment.id}`}>
                   <span className="material-symbols-outlined" aria-hidden="true">video_call</span>
                   Join Call
@@ -5628,32 +5631,22 @@ function CallPage() {
   const { appointmentId } = useParams();
   const { user } = useSession();
   const navigate = useNavigate();
-  const { data, error, loading } = useApiPage(`/api/calls/${appointmentId}`);
-  const callScriptRef = useRef(null);
+  const { data, error, loading } = useApiPage(`/api/calls/${appointmentId}`, { cache: false });
 
   useEffect(() => {
-    if (!data?.callConfigEncoded) return undefined;
-
-    const supabaseScript = document.createElement('script');
-    supabaseScript.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-    supabaseScript.async = false;
-
+    if (data?.appointment?.id !== appointmentId || !data?.callConfigEncoded) return undefined;
+    window.__telemedicineCreateSupabaseClient = createClient;
     const runtimeScript = document.createElement('script');
     runtimeScript.src = `/js/call.js?v=${Date.now()}`;
     runtimeScript.async = false;
-
-    supabaseScript.onload = () => {
-      document.body.appendChild(runtimeScript);
-      callScriptRef.current = runtimeScript;
-    };
-
-    document.body.appendChild(supabaseScript);
+    document.body.appendChild(runtimeScript);
 
     return () => {
-      if (supabaseScript.parentNode) supabaseScript.parentNode.removeChild(supabaseScript);
+      window.__telemedicineCallCleanup?.();
+      delete window.__telemedicineCreateSupabaseClient;
       if (runtimeScript.parentNode) runtimeScript.parentNode.removeChild(runtimeScript);
     };
-  }, [data?.callConfigEncoded]);
+  }, [appointmentId, data?.callConfigEncoded]);
 
   const endCall = async () => {
     const res = await apiRequest(`/api/calls/${appointmentId}/end`, { method: 'POST' });
