@@ -51,11 +51,11 @@ jobs:
           npm pkg set "overrides.source-map-js=1.2.4"
           npm pkg set "overrides.fast-xml-parser=5.12.1"
           npm pkg set "overrides.@grpc/grpc-js=1.14.7"
+          npm pkg set "overrides.@opentelemetry/instrumentation-http=0.222.0"
           npm install
-          npm audit fix --omit=dev
 
       - name: Security audit
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --audit-level=moderate
 
       - name: Lint
         run: npm run lint
