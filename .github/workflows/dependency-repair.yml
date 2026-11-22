@@ -52,6 +52,7 @@ jobs:
           npm pkg set "overrides.fast-xml-parser=5.12.1"
           npm pkg set "overrides.@grpc/grpc-js=1.14.7"
           npm pkg set "overrides.@opentelemetry/instrumentation-http=0.222.0"
+          npm pkg set "overrides.baseline-browser-mapping=2.11.0"
           npm install
 
       - name: Security audit
